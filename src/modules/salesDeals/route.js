@@ -25,10 +25,21 @@ router.patch("/admin/sales/deals/:dealId/offer", authenticate("admin"), requireP
   res.json({ data, meta: { requestId: res.locals.requestId } });
 }));
 router.patch("/admin/sales/deals/:dealId/token-payment", authenticate("admin"), requirePermission("sales.write"), validate(updateValidator), controller.action(async (req, res) => {
+  const { SalesDeal } = await import("./model.js");
+  const existing = await SalesDeal.findById(req.params.dealId);
   const patch = { $set: { lastActivityAt: new Date() } };
   if (req.body.tokenAmount !== undefined) patch.$set["financials.tokenAmount"] = req.body.tokenAmount;
   if (req.body.tokenPaid !== undefined) patch.$set["financials.tokenPaid"] = req.body.tokenPaid;
   if (req.body.tokenPayment !== undefined) patch.$set["financials.tokenPayment"] = req.body.tokenPayment;
+  const wasPaid = Boolean(existing?.financials?.tokenPaid);
+  const nextPaid = req.body.tokenPaid !== undefined ? Boolean(req.body.tokenPaid) : wasPaid;
+  const nextAmount = Number(req.body.tokenAmount ?? req.body.tokenPayment?.amount ?? existing?.financials?.tokenAmount ?? 0);
+  const currentPaid = Number(existing?.financials?.totalPaid ?? 0);
+  if (!wasPaid && nextPaid && nextAmount > 0) patch.$set["financials.totalPaid"] = currentPaid + nextAmount;
+  if (wasPaid && req.body.tokenPaid === false) {
+    const previousAmount = Number(existing?.financials?.tokenAmount ?? 0);
+    patch.$set["financials.totalPaid"] = Math.max(0, currentPaid - previousAmount);
+  }
   const data = await import("./service.js").then((m) => m.service.update(req.params.dealId, patch, req.actor, req));
   if (req.body.tokenPaid) {
     const { SalesDeal } = await import("./model.js");

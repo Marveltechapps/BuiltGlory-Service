@@ -82,7 +82,7 @@ export const service = {
     const tokenPaid = Boolean(extra.tokenPaid || extra.financials?.tokenPaid || financials.tokenPaid);
     const totalPaid = Number(extra.totalPaid ?? financials.totalPaid ?? 0);
     if (to === "token_payment" && !agreedPrice) throw domainError("Agreed price is required before token payment.");
-    if (["full_payment", "stage_payment"].includes(to) && !tokenPaid) throw domainError("Token must be paid before payment plan selection.");
+    if (["full_payment", "stage_payment"].includes(to) && !tokenPaid) throw domainError("Record the token payment before moving to full or stage payment.");
     if (to === "closed") {
       const buyer = await User.findById(before.buyerId);
       assertKycComplete(buyer, "deal closure");
