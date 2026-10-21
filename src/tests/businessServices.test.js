@@ -1,0 +1,87 @@
+import bcrypt from "bcryptjs";
+import { Admin } from "../modules/admins/model.js";
+import * as authService from "../modules/auth/service.js";
+import { service as userService } from "../modules/users/service.js";
+import { service as sellRequestService } from "../modules/sellRequests/service.js";
+import { service as acquisitionService } from "../modules/acquisitions/service.js";
+import { models, seedAcquisition, seedCustomer, seedSellRequest, setupIntegrationDb } from "./helpers/integrationHarness.js";
+
+setupIntegrationDb();
+
+describe("business service branch coverage", () => {
+  test("admin login, refresh rotation, reuse detection, and logout", async () => {
+    const admin = await Admin.create({ name: "Login Admin", email: "login-admin@builtglory.test", passwordHash: await bcrypt.hash("Password123!", 10), role: "super_admin", permissions: ["properties.read"], isActive: true });
+    const login = await authService.adminLogin({ email: admin.email, password: "Password123!", deviceId: "device", userAgent: "jest", ip: "127.0.0.1" });
+    expect(login.accessToken).toBeTruthy();
+    expect(login.refreshToken).toBeTruthy();
+
+    const rotated = await authService.refresh({ refreshToken: login.refreshToken, deviceId: "device", userAgent: "jest", ip: "127.0.0.1" });
+    expect(rotated.refreshToken).toBeTruthy();
+    await expect(authService.refresh({ refreshToken: login.refreshToken })).rejects.toThrow("reuse");
+
+    const loggedOut = await authService.logout({ refreshToken: rotated.refreshToken, accessToken: rotated.accessToken });
+    expect(loggedOut.revoked).toBe(true);
+  });
+
+  test("user KYC/FEMA service validates required rules", async () => {
+    const { user } = await seedCustomer({ userType: "nri", femaCompliance: { status: "not_checked" } });
+    const actor = { type: "admin", id: user._id, role: "super_admin" };
+
+    await expect(userService.updateKyc(user._id, { status: "verified", documentUpdates: [] }, actor, {})).rejects.toThrow("Required KYC");
+    await expect(userService.updateFema(user._id, {}, actor, {})).rejects.toThrow("FEMA status");
+    const fema = await userService.updateFema(user._id, { status: "compliant", notes: "Verified" }, actor, {});
+    expect(fema.femaCompliance.status).toBe("compliant");
+
+    const resident = await seedCustomer({ userType: "resident" });
+    await expect(userService.updateFema(resident.user._id, { status: "compliant" }, actor, {})).rejects.toThrow("applies only");
+  });
+
+  test("sell request service validates submissions and customer update ownership", async () => {
+    const { user } = await seedCustomer({ role: "seller" });
+    const actor = { type: "customer", id: user._id };
+
+    await expect(sellRequestService.create({ propertyTitle: "Incomplete" }, actor)).rejects.toThrow("incomplete");
+    const draft = await sellRequestService.create({ status: "draft", isDraft: true, propertyTitle: "Draft" }, actor);
+    expect(draft.status).toBe("draft");
+    await expect(sellRequestService.transition(draft._id, "new", actor, {}, {})).rejects.toThrow("incomplete");
+
+    const complete = await seedSellRequest(user._id, { status: "draft", ownershipType: "single_owner", photos: ["1", "2", "3", "4", "5"] });
+    const submitted = await sellRequestService.transition(complete._id, "new", actor, {}, {});
+    expect(submitted.status).toBe("new");
+    await expect(sellRequestService.update(submitted._id, { propertyTitle: "Nope" }, actor, {})).rejects.toThrow("Seller can edit only");
+
+    const listed = await seedSellRequest(user._id, { status: "new", askingPrice: 8500000 });
+    const open = await seedAcquisition(listed._id, user._id, { askingPrice: 8500000, builtgloryOffer: undefined, valuation: undefined });
+    const countered = await sellRequestService.sellerOfferDecision(open.sellRequestId, { decision: "countered", counterAmount: 8800000, notes: "Nearby sale" }, actor, {});
+    expect(countered.offer.amount).toBe(8500000);
+    expect(countered.offer.counterAmount).toBe(8800000);
+    expect(countered.offer.status).toBe("seller_countered");
+    await expect(sellRequestService.sellerOfferDecision(open.sellRequestId, { decision: "accepted" }, actor, {})).rejects.toThrow("already been decided");
+  });
+
+  test("acquisition service rejects invalid gates and converts acquired assets", async () => {
+    const seller = await seedCustomer({ role: "seller" });
+    const sellRequest = await seedSellRequest(seller.user._id, { status: "approved" });
+    const actor = { type: "admin", id: seller.user._id, role: "super_admin" };
+    const acquisition = await acquisitionService.create({ sellRequestId: sellRequest._id }, actor);
+    expect(acquisition.stage).toBe("pending_review");
+    await expect(acquisitionService.transition(acquisition._id, "valuation", actor, {}, {})).rejects.toThrow("Invalid state transition");
+    const inspected = await acquisitionService.transition(acquisition._id, "site_inspection", actor, {}, {});
+    expect(inspected.stage).toBe("site_inspection");
+    const valued = await acquisitionService.transition(inspected._id, "valuation", actor, {}, {});
+    expect(valued.stage).toBe("valuation");
+    await expect(acquisitionService.transition(valued._id, "negotiation", actor, {}, {})).rejects.toThrow("Valuation");
+    const negotiating = await acquisitionService.transition(valued._id, "negotiation", actor, {}, { builtgloryOffer: 750000, valuation: { amount: 750000, notes: "Market check" } });
+    expect(negotiating.stage).toBe("negotiation");
+    expect(negotiating.builtgloryOffer).toBe(750000);
+    const held = await acquisitionService.transition(negotiating._id, "on_hold", actor, {}, { onHoldReason: "Seller travelling" });
+    expect(held.stage).toBe("on_hold");
+    const resumed = await acquisitionService.transition(held._id, "negotiation", actor, {}, {});
+    expect(resumed.stage).toBe("negotiation");
+
+    const acquired = await seedAcquisition(sellRequest._id, seller.user._id, { stage: "acquired", payout: { completed: true }, finalPurchasePrice: 800000, propertyDetails: { address: { city: "Bengaluru", locality: "Central", pincode: "560001" } } });
+    const property = await acquisitionService.convertToProperty(acquired._id, { title: "Converted Property" }, actor, {});
+    expect(property.title).toBe("Converted Property");
+    expect(await models.AuditLog.countDocuments({ action: "acquisitions.converted_to_property" })).toBe(1);
+  });
+});
