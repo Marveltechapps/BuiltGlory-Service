@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getPagination } from "../../shared/pagination.js";
-import { assertTransition, requireSuperAdmin, transitions, validatePropertyPublication } from "../../shared/workflows.js";
+import { getPagination } from "../../utils/pagination.js";
+import { assertTransition, requireSuperAdmin, transitions, validatePropertyPublication } from "../../services/workflow.rules.js";
 
 const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const modulesRoot = path.join(srcRoot, "modules");
@@ -45,7 +45,7 @@ describe("code quality", () => {
 
   test("feature services stay free of HTTP response objects", () => {
     const offenders = sourceFiles
-      .filter((file) => file.endsWith(`${path.sep}service.js`) && file.includes(`${path.sep}modules${path.sep}`))
+      .filter((file) => /\.service\.js$/.test(file) && file.includes(`${path.sep}modules${path.sep}`))
       .filter((file) => /from\s+["']express["']|res\.(status|json|send)\s*\(/.test(fs.readFileSync(file, "utf8")))
       .map((file) => path.relative(srcRoot, file));
     expect(offenders).toEqual([]);
@@ -53,7 +53,7 @@ describe("code quality", () => {
 
   test("admin and profile routes declare authentication", () => {
     const routeFiles = fs.readdirSync(modulesRoot)
-      .map((name) => path.join(modulesRoot, name, "route.js"))
+      .map((name) => path.join(modulesRoot, name, `${name}.routes.js`))
       .filter((file) => fs.existsSync(file));
     const missing = [];
     for (const file of routeFiles) {
@@ -93,19 +93,44 @@ describe("architecture", () => {
   });
 
   test("every feature router is mounted once", () => {
-    const mounts = `${read("routes.js")}\n${read("app.js")}`;
+    const mounts = `${read("routes/index.js")}\n${read("app.js")}`;
     const unmounted = fs.readdirSync(modulesRoot)
-      .filter((name) => fs.existsSync(path.join(modulesRoot, name, "route.js")))
-      .filter((name) => !mounts.includes(`modules/${name}/route.js`));
+      .filter((name) => fs.existsSync(path.join(modulesRoot, name, `${name}.routes.js`)))
+      .filter((name) => !mounts.includes(`modules/${name}/${name}.routes.js`));
     expect(unmounted).toEqual([]);
   });
 
-  test("persistence models register the soft-delete plugin", () => {
-    const exceptions = new Set(["adminSettings", "editLocks", "auth", "reports"]);
+  test("module files follow the <module>.<role>.js naming convention", () => {
+    const offenders = fs.readdirSync(modulesRoot)
+      .filter((name) => name !== "error")
+      .flatMap((name) => fs.readdirSync(path.join(modulesRoot, name))
+        .filter((file) => file.endsWith(".js") && !file.startsWith(`${name}.`))
+        .map((file) => `${name}/${file}`));
+    expect(offenders).toEqual([]);
+  });
+
+  test("every feature module owns an error file", () => {
     const missing = fs.readdirSync(modulesRoot)
-      .filter((name) => fs.existsSync(path.join(modulesRoot, name, "model.js")))
+      .filter((name) => name !== "error")
+      .filter((name) => !fs.existsSync(path.join(modulesRoot, name, `${name}.error.js`)));
+    expect(missing).toEqual([]);
+  });
+
+  test("route files only wire middleware to controller handlers", () => {
+    const offenders = fs.readdirSync(modulesRoot)
+      .map((name) => path.join(modulesRoot, name, `${name}.routes.js`))
+      .filter((file) => fs.existsSync(file))
+      .filter((file) => /async\s*\(req|asyncHandler\(|controller\.action\(/.test(fs.readFileSync(file, "utf8")))
+      .map((file) => path.relative(srcRoot, file));
+    expect(offenders).toEqual([]);
+  });
+
+  test("persistence models register the soft-delete plugin", () => {
+    const exceptions = new Set(["adminSettings", "editLocks", "auth", "reports", "error"]);
+    const missing = fs.readdirSync(modulesRoot)
+      .filter((name) => fs.existsSync(path.join(modulesRoot, name, `${name}.model.js`)))
       .filter((name) => !exceptions.has(name))
-      .filter((name) => !fs.readFileSync(path.join(modulesRoot, name, "model.js"), "utf8").includes("softDeletePlugin"));
+      .filter((name) => !fs.readFileSync(path.join(modulesRoot, name, `${name}.model.js`), "utf8").includes("softDeletePlugin"));
     expect(missing).toEqual([]);
   });
 
@@ -122,8 +147,8 @@ describe("architecture", () => {
       "supportTicketStatus",
       "visitStatus"
     ]);
-    expect(read("routes.js")).toContain('router.use(propertiesRoutes)');
-    expect(read("shared/response.js")).toContain("requestId");
+    expect(read("routes/index.js")).toContain('router.use(propertiesRoutes)');
+    expect(read("utils/response.js")).toContain("requestId");
   });
 });
 

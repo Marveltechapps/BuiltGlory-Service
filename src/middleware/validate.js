@@ -1,4 +1,4 @@
-import { badRequest } from "../shared/errors/AppError.js";
+import { badRequest } from "../modules/error/index.js";
 const mutate = (target, source) => {
   if (!source || target === source) return;
   for (const key of Object.keys(target)) delete target[key];

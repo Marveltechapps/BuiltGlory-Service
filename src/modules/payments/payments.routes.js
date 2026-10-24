@@ -1,0 +1,13 @@
+import { Router } from "express";
+import { controller } from "./payments.controller.js";
+import { validate } from "../../middleware/validate.js";
+import { authenticate, requirePermission } from "../../middleware/auth.js";
+import { createValidator, listValidator, verifyValidator } from "./payments.validation.js";
+const router = Router();
+router.post("/payments/token", authenticate("customer"), validate(createValidator), controller.create);
+router.post("/payments/:paymentId/cancel", authenticate("customer"), controller.createPaymentsCancel);
+router.post("/payments/webhook", controller.createPaymentsWebhook);
+router.get("/me/payments", authenticate("customer"), validate(listValidator), controller.mine);
+router.get("/admin/payments", authenticate("admin"), requirePermission("sales.read"), validate(listValidator), controller.list);
+router.patch("/admin/payments/:paymentId/verify", authenticate("admin"), requirePermission("sales.write"), validate(verifyValidator), controller.updateAdminPaymentsVerify);
+export default router;

@@ -1,0 +1,11 @@
+import { Router } from "express";
+import { controller } from "./chatThreads.controller.js";
+import { validate } from "../../middleware/validate.js";
+import { authenticate, requireAnyPermission } from "../../middleware/auth.js";
+import { listValidator, updateValidator } from "./chatThreads.validation.js";
+const router = Router();
+router.get("/admin/negotiations/chats", authenticate("admin"), requireAnyPermission(["enquiries.read", "sales.read"]), validate(listValidator), controller.list);
+router.get("/admin/negotiations/chats/:threadId", authenticate("admin"), requireAnyPermission(["enquiries.read", "sales.read"]), controller.get);
+router.post("/admin/negotiations/chats/:threadId/messages", authenticate("admin"), requireAnyPermission(["enquiries.write", "sales.write"]), validate(updateValidator), controller.createAdminNegotiationsChatsMessages);
+router.patch("/admin/negotiations/chats/:threadId/offers/:messageId", authenticate("admin"), requireAnyPermission(["enquiries.write", "sales.write"]), validate(updateValidator), controller.updateAdminNegotiationsChatsOffersById);
+export default router;

@@ -1,13 +1,13 @@
-import { sendOtpValidator as authOtpValidator } from "../modules/auth/validator.js";
-import { createValidator as propertyCreateValidator, listValidator as propertyListValidator } from "../modules/properties/validator.js";
-import { createValidator as paymentCreateValidator } from "../modules/payments/validator.js";
-import { createValidator as visitCreateValidator } from "../modules/visits/validator.js";
-import { createValidator as supportCreateValidator } from "../modules/supportTickets/validator.js";
-import { createValidator as callbackCreateValidator } from "../modules/callbacks/validator.js";
-import { createValidator as sellCreateValidator, updateValidator as sellUpdateValidator } from "../modules/sellRequests/validator.js";
-import { listValidator as acquisitionListValidator, updateValidator as acquisitionUpdateValidator, statusValidator as acquisitionStatusValidator } from "../modules/acquisitions/validator.js";
-import { createValidator as salesCreateValidator, updateValidator as salesUpdateValidator, statusValidator as salesStatusValidator, listValidator as salesListValidator } from "../modules/salesDeals/validator.js";
-import { collectSubmissionIssues } from "../modules/sellRequests/validationRules.js";
+import { sendOtpValidator as authOtpValidator } from "../modules/auth/auth.validation.js";
+import { createValidator as propertyCreateValidator, listValidator as propertyListValidator } from "../modules/properties/properties.validation.js";
+import { createValidator as paymentCreateValidator } from "../modules/payments/payments.validation.js";
+import { createValidator as visitCreateValidator } from "../modules/visits/visits.validation.js";
+import { createValidator as supportCreateValidator } from "../modules/supportTickets/supportTickets.validation.js";
+import { createValidator as callbackCreateValidator } from "../modules/callbacks/callbacks.validation.js";
+import { createValidator as sellCreateValidator, updateValidator as sellUpdateValidator } from "../modules/sellRequests/sellRequests.validation.js";
+import { listValidator as acquisitionListValidator, updateValidator as acquisitionUpdateValidator, statusValidator as acquisitionStatusValidator } from "../modules/acquisitions/acquisitions.validation.js";
+import { createValidator as salesCreateValidator, updateValidator as salesUpdateValidator, statusValidator as salesStatusValidator, listValidator as salesListValidator } from "../modules/salesDeals/salesDeals.validation.js";
+import { collectSubmissionIssues } from "../modules/sellRequests/sellRequests.rules.js";
 
 describe("representative request validators", () => {
   test("rejects invalid auth OTP payload", () => {

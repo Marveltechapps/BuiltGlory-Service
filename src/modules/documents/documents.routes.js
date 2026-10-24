@@ -1,0 +1,15 @@
+import { Router } from "express";
+import multer from "multer";
+import { controller } from "./documents.controller.js";
+import { validate } from "../../middleware/validate.js";
+import { authenticate, requirePermission } from "../../middleware/auth.js";
+import { createValidator, listValidator } from "./documents.validation.js";
+import { uploadLimiter } from "../../middleware/rateLimit.js";
+import { service } from "./documents.service.js";
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const router = Router();
+router.post("/documents/upload-intents", authenticate(), uploadLimiter, validate(createValidator), controller.createDocumentsUploadIntents);
+router.post("/documents", authenticate(), uploadLimiter, upload.single("file"), controller.createDocuments);
+router.get("/documents/:documentId/read-url", authenticate(), controller.getDocumentsReadUrl);
+router.get("/admin/documents", authenticate("admin"), requirePermission("properties.read"), validate(listValidator), controller.list);
+export default router;

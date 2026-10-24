@@ -1,7 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env.js";
-import { domainError } from "../shared/errors/AppError.js";
+import { domainError } from "../modules/error/index.js";
 const documentTypes = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
 const imageTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const mediaTypes = [...imageTypes, "video/mp4"];

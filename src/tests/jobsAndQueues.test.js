@@ -1,12 +1,12 @@
 import { jest } from "@jest/globals";
-import { Callback } from "../modules/callbacks/model.js";
-import { SupportTicket } from "../modules/supportTickets/model.js";
-import { Visit } from "../modules/visits/model.js";
-import { SalesDeal } from "../modules/salesDeals/model.js";
-import { Acquisition } from "../modules/acquisitions/model.js";
-import { Document } from "../modules/documents/model.js";
-import { Notification } from "../modules/notifications/model.js";
-import { User } from "../modules/users/model.js";
+import { Callback } from "../modules/callbacks/callbacks.model.js";
+import { SupportTicket } from "../modules/supportTickets/supportTickets.model.js";
+import { Visit } from "../modules/visits/visits.model.js";
+import { SalesDeal } from "../modules/salesDeals/salesDeals.model.js";
+import { Acquisition } from "../modules/acquisitions/acquisitions.model.js";
+import { Document } from "../modules/documents/documents.model.js";
+import { Notification } from "../modules/notifications/notifications.model.js";
+import { User } from "../modules/users/users.model.js";
 import { markOverdueCallbacks, markOverdueSupportTickets, enqueueVisitReminders, enqueueDealFollowUps, retryDocumentScans, calculateStageAging } from "../jobs/index.js";
 import { dispatchNotification, enqueueNotification, processNotificationQueue } from "../services/notification.service.js";
 

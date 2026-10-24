@@ -1,6 +1,6 @@
-import { createRepository } from "../shared/repositoryFactory.js";
+import { createRepository } from "../database/repository.factory.js";
 import { mongoSanitize } from "../middleware/mongoSanitize.js";
-import { AppError, badRequest, conflict, domainError, forbidden, notFound, unauthorized } from "../shared/errors/AppError.js";
+import { AppError, badRequest, conflict, domainError, forbidden, notFound, unauthorized } from "../modules/error/index.js";
 
 describe("shared infrastructure", () => {
   test("repository list applies forced filters after user filters", async () => {

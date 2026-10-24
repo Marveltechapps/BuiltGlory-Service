@@ -1,8 +1,8 @@
-import { connectDatabase } from "../src/config/database.js";
-import { service } from "../src/modules/users/service.js";
-import { User } from "../src/modules/users/model.js";
-import { makeReferenceId } from "../src/shared/id.js";
-import { sendCustomerOtp, verifyCustomerOtp } from "../src/modules/auth/service.js";
+import { connectDatabase } from "../src/database/connection.js";
+import { service } from "../src/modules/users/users.service.js";
+import { User } from "../src/modules/users/users.model.js";
+import { makeReferenceId } from "../src/utils/id.js";
+import { sendCustomerOtp, verifyCustomerOtp } from "../src/modules/auth/auth.service.js";
 import mongoose from "mongoose";
 
 await connectDatabase();

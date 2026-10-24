@@ -2,8 +2,8 @@ import axios from "axios";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { connectDatabase, disconnectDatabase } from "../src/config/database.js";
-import { Notification } from "../src/modules/notifications/model.js";
+import { connectDatabase, disconnectDatabase } from "../src/database/connection.js";
+import { Notification } from "../src/modules/notifications/notifications.model.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const seedPath = join(__dirname, "..", "postman", "push-notification-test-data.json");

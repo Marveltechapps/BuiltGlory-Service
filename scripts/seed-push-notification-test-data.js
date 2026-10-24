@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
-import { connectDatabase, disconnectDatabase } from "../src/config/database.js";
-import { makeReferenceId } from "../src/shared/id.js";
-import { Property } from "../src/modules/properties/model.js";
-import { SalesDeal } from "../src/modules/salesDeals/model.js";
-import { Acquisition } from "../src/modules/acquisitions/model.js";
-import { SellRequest } from "../src/modules/sellRequests/model.js";
-import { User } from "../src/modules/users/model.js";
+import { connectDatabase, disconnectDatabase } from "../src/database/connection.js";
+import { makeReferenceId } from "../src/utils/id.js";
+import { Property } from "../src/modules/properties/properties.model.js";
+import { SalesDeal } from "../src/modules/salesDeals/salesDeals.model.js";
+import { Acquisition } from "../src/modules/acquisitions/acquisitions.model.js";
+import { SellRequest } from "../src/modules/sellRequests/sellRequests.model.js";
+import { User } from "../src/modules/users/users.model.js";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

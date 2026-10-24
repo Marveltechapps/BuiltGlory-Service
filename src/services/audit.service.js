@@ -1,4 +1,4 @@
-import { AuditLog } from "../modules/auditLogs/model.js";
+import { AuditLog } from "../modules/auditLogs/auditLogs.model.js";
 export const writeAuditLog = async ({ actor, action, resourceType, resourceId, before, after, req }, options = {}) => {
   if (!actor || !["admin", "customer", "system"].includes(actor.type)) return null;
   return AuditLog.create([{

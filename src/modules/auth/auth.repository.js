@@ -1,5 +1,5 @@
-import { EmailOtp } from "./otp.model.js";
-import { User } from "../users/model.js";
+import { EmailOtp } from "./auth.otp.model.js";
+import { User } from "../users/users.model.js";
 
 const emailOtpPurpose = "email_verification";
 

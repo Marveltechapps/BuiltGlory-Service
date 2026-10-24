@@ -15,8 +15,8 @@ jest.unstable_mockModule("nodemailer", () => ({
 }));
 
 const { app, setupIntegrationDb } = await import("./helpers/integrationHarness.js");
-const { EmailOtp } = await import("../modules/auth/otp.model.js");
-const { User } = await import("../modules/users/model.js");
+const { EmailOtp } = await import("../modules/auth/auth.otp.model.js");
+const { User } = await import("../modules/users/users.model.js");
 
 jest.setTimeout(60_000);
 

@@ -1,4 +1,4 @@
-import { connectDatabase } from "../src/config/database.js";
+import { connectDatabase } from "../src/database/connection.js";
 import mongoose from "mongoose";
 
 /**

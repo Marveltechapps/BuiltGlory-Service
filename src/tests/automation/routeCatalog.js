@@ -34,7 +34,7 @@ export const loadApiCatalog = () => {
   ];
 
   for (const moduleName of fs.readdirSync(modulesRoot)) {
-    const file = path.join(modulesRoot, moduleName, "route.js");
+    const file = path.join(modulesRoot, moduleName, `${moduleName}.routes.js`);
     if (!fs.existsSync(file)) continue;
     const text = fs.readFileSync(file, "utf8");
     const pattern = /router\.(get|post|put|patch|delete)\(\s*["'`]([^"'`]+)["'`]/g;

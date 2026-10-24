@@ -1,4 +1,4 @@
-import { User } from "../modules/users/model.js";
+import { User } from "../modules/users/users.model.js";
 import { sendFcmToTokens } from "./firebase.service.js";
 import { logger } from "../config/logger.js";
 import { buildCanonicalNotificationFields, isMasterDeepLink } from "../constants/notificationCatalog.js";

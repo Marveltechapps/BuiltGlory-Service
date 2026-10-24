@@ -1,43 +1,51 @@
-import { asyncHandler } from "../../shared/asyncHandler.js";
-import { ok } from "../../shared/response.js";
+import { asyncHandler } from "../../utils/asyncHandler.js";
+import { ok } from "../../utils/response.js";
 import * as service from "./auth.service.js";
+import * as emailOtpService from "./auth.emailOtp.service.js";
 import { writeAuditLog } from "../../services/audit.service.js";
-
-export const emailOtpController = {
-  sendOtp: asyncHandler(async (req, res) => {
-    console.log("EMAIL_OTP_ROUTE_HIT", {
-      path: req.originalUrl,
-      email: req.body.email
-    });
-    return ok(res, await service.sendEmailOtp({
-      ...req.body,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"]
-    }));
-  }),
-
-  resendOtp: asyncHandler(async (req, res) => ok(res, await service.resendEmailOtp({
-    ...req.body,
-    ip: req.ip,
-    userAgent: req.headers["user-agent"]
-  }))),
-
+export const controller = {
+  sendOtp: asyncHandler(async (req, res) => ok(res, await service.sendCustomerOtp({ ...req.body, ip: req.ip }))),
   verifyOtp: asyncHandler(async (req, res) => {
-    const data = await service.verifyEmailOtp({
-      ...req.body,
-      deviceId: req.headers["x-device-id"],
-      userAgent: req.headers["user-agent"],
-      ip: req.ip
-    });
-    await writeAuditLog({
-      actor: { type: "customer", id: data.user._id },
-      action: "customer.email_login",
-      resourceType: "customer",
-      resourceId: data.user._id,
-      before: null,
-      after: { email: data.user.email },
-      req
-    });
+    const data = await service.verifyCustomerOtp({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip });
+    if (data.user?._id) await writeAuditLog({ actor: { type: "customer", id: data.user._id }, action: "customer.login", resourceType: "customer", resourceId: data.user._id, before: null, after: { phone: data.user.phoneNormalized }, req });
+    ok(res, data);
+  }),
+  sendEmailOtp: asyncHandler(async (req, res) => ok(res, await emailOtpService.sendEmailOtp({ ...req.body, ip: req.ip, userAgent: req.headers["user-agent"] }))),
+  resendEmailOtp: asyncHandler(async (req, res) => ok(res, await emailOtpService.resendEmailOtp({ ...req.body, ip: req.ip, userAgent: req.headers["user-agent"] }))),
+  verifyEmailOtp: asyncHandler(async (req, res) => {
+    const data = await emailOtpService.verifyEmailOtp({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip });
+    await writeAuditLog({ actor: { type: "customer", id: data.user._id }, action: "customer.email_login", resourceType: "customer", resourceId: data.user._id, before: null, after: { email: data.user.email }, req });
+    ok(res, data);
+  }),
+  adminLogin: asyncHandler(async (req, res) => {
+    const data = await service.adminLogin({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip });
+    await writeAuditLog({ actor: { type: "admin", id: data.admin._id }, action: "admin.login", resourceType: "admin", resourceId: data.admin._id, before: null, after: { email: data.admin.email, role: data.admin.role }, req });
+    ok(res, data);
+  }),
+  passwordLogin: asyncHandler(async (req, res) => {
+    const data = await service.customerPasswordLogin({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip });
+    if (data.user?._id) await writeAuditLog({ actor: { type: "customer", id: data.user._id }, action: "customer.password_login", resourceType: "customer", resourceId: data.user._id, before: null, after: { phone: data.user.phoneNormalized }, req });
+    ok(res, data);
+  }),
+  setPassword: asyncHandler(async (req, res) => ok(res, await service.setCustomerPassword(req.actor.id, req.body.password))),
+  forgotPassword: asyncHandler(async (req, res) => ok(res, await service.forgotCustomerPassword({ ...req.body, ip: req.ip }))),
+  resetPassword: asyncHandler(async (req, res) => ok(res, await service.resetCustomerPassword(req.body))),
+  refresh: asyncHandler(async (req, res) => ok(res, await service.refresh({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip }))),
+  logout: asyncHandler(async (req, res) => {
+    const accessToken = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    const data = await service.logout({ ...req.body, accessToken });
+    if (data.actor) await writeAuditLog({ actor: data.actor, action: `${data.actor.type}.logout`, resourceType: data.actor.type, resourceId: data.actor.id, before: null, after: { revoked: true }, req });
+    ok(res, { revoked: data.revoked });
+  }),
+  listAdminSessions: asyncHandler(async (req, res) => ok(res, await service.listAdminSessions(req.actor))),
+  revokeAdminSession: asyncHandler(async (req, res) => {
+    const data = await service.revokeAdminSession(req.params.sid, req.actor);
+    await writeAuditLog({ actor: req.actor, action: "admin.session_revoked", resourceType: "adminSession", resourceId: req.params.sid, before: null, after: data, req });
+    ok(res, data);
+  }),
+  revokeOtherAdminSessions: asyncHandler(async (req, res) => {
+    const data = await service.revokeAllAdminSessions(req.actor);
+    await writeAuditLog({ actor: req.actor, action: "admin.other_sessions_revoked", resourceType: "adminSession", resourceId: req.actor.id, before: null, after: data, req });
     ok(res, data);
   })
 };

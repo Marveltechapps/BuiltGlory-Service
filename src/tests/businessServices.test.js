@@ -1,9 +1,9 @@
 import bcrypt from "bcryptjs";
-import { Admin } from "../modules/admins/model.js";
-import * as authService from "../modules/auth/service.js";
-import { service as userService } from "../modules/users/service.js";
-import { service as sellRequestService } from "../modules/sellRequests/service.js";
-import { service as acquisitionService } from "../modules/acquisitions/service.js";
+import { Admin } from "../modules/admins/admins.model.js";
+import * as authService from "../modules/auth/auth.service.js";
+import { service as userService } from "../modules/users/users.service.js";
+import { service as sellRequestService } from "../modules/sellRequests/sellRequests.service.js";
+import { service as acquisitionService } from "../modules/acquisitions/acquisitions.service.js";
 import { models, seedAcquisition, seedCustomer, seedSellRequest, setupIntegrationDb } from "./helpers/integrationHarness.js";
 
 setupIntegrationDb();

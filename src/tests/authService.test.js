@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
-import { Notification } from "../modules/notifications/model.js";
-import { sendCustomerOtp } from "../modules/auth/service.js";
+import { Notification } from "../modules/notifications/notifications.model.js";
+import { sendCustomerOtp } from "../modules/auth/auth.service.js";
 
 const originalCreate = Notification.create;
 const originalFetch = global.fetch;
