@@ -1,6 +1,6 @@
 import { createService } from "../../services/service.factory.js";
 import { repository } from "./users.repository.js";
-import { conflict, domainError } from "../error/index.js";
+import { conflict, domainError } from "./users.error.js";
 import { missingKycDocuments } from "../../services/complianceRules.service.js";
 import { deleteObject, storageKeyFromUrl } from "../../services/storage.service.js";
 import { Document } from "../documents/documents.model.js";

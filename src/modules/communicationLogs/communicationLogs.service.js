@@ -1,7 +1,7 @@
 import { CommunicationLog } from "./communicationLogs.model.js";
 import { makeReferenceId } from "../../utils/id.js";
 import { getPagination, paginationMeta } from "../../utils/pagination.js";
-import { domainError, forbidden, notFound } from "../error/index.js";
+import { domainError, forbidden, notFound } from "./communicationLogs.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 import { enqueueInAppAndPush } from "../../services/notification.service.js";
 import { resolveDashboardNotificationTarget } from "../../services/workflowPush.service.js";

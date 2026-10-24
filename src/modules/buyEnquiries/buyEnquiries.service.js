@@ -7,7 +7,7 @@ import { SalesDeal } from "../salesDeals/salesDeals.model.js";
 import { Acquisition } from "../acquisitions/acquisitions.model.js";
 import { SellRequest } from "../sellRequests/sellRequests.model.js";
 import { Admin } from "../admins/admins.model.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./buyEnquiries.error.js";
 const baseService = createService({ collection: "buyEnquiries", repository, workflowField: "status", workflowMap: "buyEnquiryStatus", ownerField: "buyerId" });
 const dealStageLabels = {
   active_leads: "Active Lead",

@@ -3,7 +3,7 @@ import { repository } from "./acquisitions.repository.js";
 import { SellRequest } from "../sellRequests/sellRequests.model.js";
 import { Property } from "../properties/properties.model.js";
 import { User } from "../users/users.model.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./acquisitions.error.js";
 import { makeReferenceId } from "../../utils/id.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 import { withTransaction } from "../../database/transactions.js";

@@ -3,7 +3,7 @@ import { repository } from "./salesDeals.repository.js";
 import { Property } from "../properties/properties.model.js";
 import { User } from "../users/users.model.js";
 import { BuyEnquiry } from "../buyEnquiries/buyEnquiries.model.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./salesDeals.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 import { assertTransition } from "../../services/workflow.rules.js";
 import { withTransaction } from "../../database/transactions.js";

@@ -1,5 +1,5 @@
 import { createService } from "../../services/service.factory.js";
-import { notFound, badRequest } from "../error/index.js";
+import { notFound, badRequest } from "./notifications.error.js";
 import { Notification } from "./notifications.model.js";
 import { repository } from "./notifications.repository.js";
 import { enqueueNotification, dispatchNotification, enqueueInAppAndPush } from "../../services/notification.service.js";

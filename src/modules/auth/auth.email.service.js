@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
-import { AppError } from "../error/index.js";
+import { AppError } from "./auth.error.js";
 
 let transporter;
 

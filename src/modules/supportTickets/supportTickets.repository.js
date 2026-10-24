@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { SupportTicket } from "./supportTickets.model.js";
 import { createRepository } from "../../database/repository.factory.js";
-import { notFound } from "../error/index.js";
+import { notFound } from "./supportTickets.error.js";
 
 const baseRepository = createRepository(SupportTicket);
 

@@ -1,6 +1,6 @@
 import { createService } from "../../services/service.factory.js";
 import { repository } from "./supportTickets.repository.js";
-import { domainError, notFound } from "../error/index.js";
+import { domainError, notFound } from "./supportTickets.error.js";
 import { enqueueInAppAndPush, enqueueNotification } from "../../services/notification.service.js";
 import { Admin } from "../admins/admins.model.js";
 

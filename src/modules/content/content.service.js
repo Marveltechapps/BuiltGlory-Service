@@ -1,6 +1,6 @@
 import { makeReferenceId } from "../../utils/id.js";
 import { writeAuditLog } from "../../services/audit.service.js";
-import { conflict, notFound } from "../error/index.js";
+import { conflict, notFound } from "./content.error.js";
 import { DEFAULT_CONTENT_ITEMS } from "./content.defaults.js";
 import { ContentItem } from "./content.model.js";
 import { repository } from "./content.repository.js";

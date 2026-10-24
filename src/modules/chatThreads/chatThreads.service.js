@@ -1,6 +1,6 @@
 import { createService } from "../../services/service.factory.js";
 import { repository } from "./chatThreads.repository.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./chatThreads.error.js";
 const baseService = createService({ collection: "chatThreads", repository, workflowField: null, workflowMap: null, ownerField: null });
 export const service = {
   ...baseService,

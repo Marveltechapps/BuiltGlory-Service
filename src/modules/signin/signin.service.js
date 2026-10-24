@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { User } from "../users/users.model.js";
 import { makeReferenceId } from "../../utils/id.js";
-import { badRequest } from "../error/index.js";
+import { badRequest } from "./signin.error.js";
 import { sendOtpViaSmsVendor } from "../../services/smsVendor.service.js";
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000;

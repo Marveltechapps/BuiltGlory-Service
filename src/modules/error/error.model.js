@@ -13,3 +13,11 @@ export const forbidden = (message = "Permission denied.") => new AppError(403, "
 export const notFound = (message = "Resource not found.") => new AppError(404, "NOT_FOUND", message);
 export const conflict = (message = "Conflict.", details = []) => new AppError(409, "CONFLICT", message, details);
 export const domainError = (message, details) => new AppError(422, "DOMAIN_RULE_VIOLATION", message, details);
+export const createErrorHelpers = (ErrorClass) => ({
+  badRequest: (message, details) => new ErrorClass(400, "VALIDATION_ERROR", message, details),
+  unauthorized: (message = "Authentication required.") => new ErrorClass(401, "UNAUTHORIZED", message),
+  forbidden: (message = "Permission denied.") => new ErrorClass(403, "FORBIDDEN", message),
+  notFound: (message = "Resource not found.") => new ErrorClass(404, "NOT_FOUND", message),
+  conflict: (message = "Conflict.", details = []) => new ErrorClass(409, "CONFLICT", message, details),
+  domainError: (message, details) => new ErrorClass(422, "DOMAIN_RULE_VIOLATION", message, details)
+});

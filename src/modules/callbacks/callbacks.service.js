@@ -1,6 +1,6 @@
 import { createService } from "../../services/service.factory.js";
 import { repository } from "./callbacks.repository.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./callbacks.error.js";
 const baseService = createService({ collection: "callbacks", repository, workflowField: "status", workflowMap: "callbackStatus", ownerField: "userId" });
 export const service = {
   ...baseService,

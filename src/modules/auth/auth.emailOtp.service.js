@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
-import { AppError, conflict, unauthorized } from "../error/index.js";
+import { AppError, conflict, unauthorized } from "./auth.error.js";
 import { makeReferenceId } from "../../utils/id.js";
 import { issueSession } from "./auth.service.js";
 import { repository } from "./auth.repository.js";

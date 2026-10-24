@@ -7,7 +7,7 @@ import { SalesDeal } from "../salesDeals/salesDeals.model.js";
 import { Property } from "../properties/properties.model.js";
 import { Document } from "../documents/documents.model.js";
 import { service as adminSettingsService } from "../adminSettings/adminSettings.service.js";
-import { conflict, domainError, unauthorized } from "../error/index.js";
+import { conflict, domainError, unauthorized } from "./payments.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 
 const baseService = createService({ collection: "payments", repository, workflowField: "status", workflowMap: "paymentStatus", ownerField: "userId" });

@@ -8,7 +8,7 @@ import { BulkMessage } from "./admins.bulkMessage.model.js";
 import { authenticate, requireAnyPermission, requirePermission } from "../../middleware/auth.js";
 import { enqueueNotification } from "../../services/notification.service.js";
 import { renderTemplate } from "../../services/notificationTemplates.service.js";
-import { badRequest, notFound, conflict } from "../error/index.js";
+import { badRequest, notFound, conflict } from "./admins.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 import { ROLE_PERMISSIONS, PERMISSIONS, STAFF_READ_PERMISSIONS } from "../../constants/permissions.js";
 import { makeReferenceId } from "../../utils/id.js";

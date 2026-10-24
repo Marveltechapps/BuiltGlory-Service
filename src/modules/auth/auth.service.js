@@ -7,7 +7,7 @@ import { User } from "../users/users.model.js";
 import { Admin } from "../admins/admins.model.js";
 import { makeReferenceId } from "../../utils/id.js";
 import { blacklistAccessToken, signAccessToken, signRefreshToken } from "../../middleware/auth.js";
-import { unauthorized, conflict, domainError } from "../error/index.js";
+import { unauthorized, conflict, domainError } from "./auth.error.js";
 import { ROLE_PERMISSIONS } from "../../constants/permissions.js";
 import { enqueueNotification } from "../../services/notification.service.js";
 import { sendOtpViaSmsVendor } from "../../services/smsVendor.service.js";

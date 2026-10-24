@@ -10,7 +10,7 @@ import { Visit } from "../visits/visits.model.js";
 import { Callback } from "../callbacks/callbacks.model.js";
 import { InteriorLead } from "../interiorLeads/interiorLeads.model.js";
 import { SupportTicket } from "../supportTickets/supportTickets.model.js";
-import { forbidden, notFound } from "../error/index.js";
+import { forbidden, notFound } from "./editLocks.error.js";
 
 const DEFAULT_TTL_SECONDS = 30 * 60;
 const clean = { isDeleted: { $ne: true } };

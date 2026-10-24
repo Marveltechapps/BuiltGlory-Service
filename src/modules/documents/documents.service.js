@@ -2,7 +2,7 @@ import { createService } from "../../services/service.factory.js";
 import { repository } from "./documents.repository.js";
 import { makeReferenceId } from "../../utils/id.js";
 import { createReadUrl, createUploadUrl, scanBuffer, uploadBuffer, validateUpload } from "../../services/storage.service.js";
-import { badRequest, domainError } from "../error/index.js";
+import { badRequest, domainError } from "./documents.error.js";
 import { SellRequest } from "../sellRequests/sellRequests.model.js";
 import { SupportTicket } from "../supportTickets/supportTickets.model.js";
 import { SalesDeal } from "../salesDeals/salesDeals.model.js";

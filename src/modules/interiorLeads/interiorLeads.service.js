@@ -1,6 +1,6 @@
 import { createService } from "../../services/service.factory.js";
 import { repository } from "./interiorLeads.repository.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./interiorLeads.error.js";
 const baseService = createService({ collection: "interiorLeads", repository, workflowField: "status", workflowMap: "interiorLeadStatus", ownerField: "buyerId" });
 export const service = {
   ...baseService,

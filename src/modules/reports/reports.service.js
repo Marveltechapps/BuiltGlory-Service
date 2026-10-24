@@ -10,7 +10,7 @@ import { Payment } from "../payments/payments.model.js";
 import { User } from "../users/users.model.js";
 import { InteriorLead } from "../interiorLeads/interiorLeads.model.js";
 import { AuditLog } from "../auditLogs/auditLogs.model.js";
-import { domainError, forbidden, notFound } from "../error/index.js";
+import { domainError, forbidden, notFound } from "./reports.error.js";
 import { getPagination, paginationMeta } from "../../utils/pagination.js";
 import { ReportExport } from "./reports.export.model.js";
 import { ReportSchedule } from "./reports.schedule.model.js";

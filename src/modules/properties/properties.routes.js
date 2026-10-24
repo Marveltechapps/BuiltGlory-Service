@@ -7,7 +7,7 @@ import { validate } from "../../middleware/validate.js";
 import { authenticate, requirePermission } from "../../middleware/auth.js";
 import { listValidator, createValidator, updateValidator, statusValidator } from "./properties.validation.js";
 import { service as documentService } from "../documents/documents.service.js";
-import { badRequest, forbidden, notFound } from "../error/index.js";
+import { badRequest, forbidden, notFound } from "./properties.error.js";
 import { PropertyImportJob } from "./properties.importJob.model.js";
 import { Property } from "./properties.model.js";
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { ok } from "../../utils/response.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./geo.error.js";
 import { reversePlace } from "./geo.addressLookup.js";
 
 const router = Router();

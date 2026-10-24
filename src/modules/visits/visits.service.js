@@ -6,7 +6,7 @@ import { User } from "../users/users.model.js";
 import { BuyEnquiry } from "../buyEnquiries/buyEnquiries.model.js";
 import { Acquisition } from "../acquisitions/acquisitions.model.js";
 import { SellRequest } from "../sellRequests/sellRequests.model.js";
-import { domainError } from "../error/index.js";
+import { domainError } from "./visits.error.js";
 import { visitDateTime } from "../../utils/visitTime.js";
 import { getPagination, paginationMeta } from "../../utils/pagination.js";
 const baseService = createService({ collection: "visits", repository, workflowField: "status", workflowMap: "visitStatus", ownerField: "buyerId" });
