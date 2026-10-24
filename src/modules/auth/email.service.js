@@ -1,5 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import nodemailer from "nodemailer";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
@@ -57,8 +55,6 @@ const isSmtpAuthFailure = (error) => error.code === "EAUTH"
   || error.responseCode === 535
   || /auth|authentication|credentials|login/i.test(`${error.command || ""} ${error.message || ""} ${error.response || ""}`);
 
-const EMAIL_DEBUG_DIR = join(process.cwd(), "logs");
-const EMAIL_DEBUG_HTML_PATH = join(EMAIL_DEBUG_DIR, "email-otp-debug.html");
 
 const renderEmailOtpTemplate = ({ otp }) => `<!doctype html>
 <html lang="en">
@@ -102,20 +98,8 @@ export const sendEmailOtp = async ({ email, otp }) => {
     html: renderEmailOtpTemplate({ otp })
   };
 
-  console.log("MAIL_OPTIONS_DEBUG", message);
-  await mkdir(EMAIL_DEBUG_DIR, { recursive: true });
-  await writeFile(EMAIL_DEBUG_HTML_PATH, message.html, "utf8");
-  console.log("EMAIL_HTML_DEBUG_SAVED", {
-    path: EMAIL_DEBUG_HTML_PATH
-  });
-
   logger.info({
     event: "email_otp_sendmail_attempt",
-    email,
-    from,
-    smtp: smtpConfigSummary()
-  });
-  console.log("EMAIL_SEND_START", {
     email,
     from,
     smtp: smtpConfigSummary()
@@ -123,21 +107,12 @@ export const sendEmailOtp = async ({ email, otp }) => {
 
   try {
     const mailTransporter = getTransporter();
-    console.log("EMAIL_SEND_TRANSPORT_READY", {
-      email,
-      smtp: smtpConfigSummary()
-    });
     const info = await mailTransporter.sendMail(message);
     const smtpInfo = serializeSendMailInfo(info);
     logger.info({
       event: "email_otp_sendmail_success",
       email,
       smtp: smtpConfigSummary(),
-      smtpResponse: smtpInfo.response,
-      smtpInfo
-    });
-    console.log("EMAIL_SEND_SUCCESS", {
-      email,
       smtpResponse: smtpInfo.response,
       smtpInfo
     });
@@ -154,11 +129,6 @@ export const sendEmailOtp = async ({ email, otp }) => {
       event: isSmtpAuthFailure(error) ? "email_otp_smtp_auth_failed" : "email_otp_sendmail_failed",
       email,
       smtp: smtpConfigSummary(),
-      smtpResponse: smtpError.response,
-      smtpError
-    });
-    console.error("EMAIL_SEND_FAILED", {
-      email,
       smtpResponse: smtpError.response,
       smtpError
     });

@@ -1,12 +1,20 @@
 import { asyncHandler } from "../../shared/asyncHandler.js";
 import { ok } from "../../shared/response.js";
 import * as service from "./service.js";
+import * as emailOtpService from "./emailOtp.service.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 export const controller = {
   sendOtp: asyncHandler(async (req, res) => ok(res, await service.sendCustomerOtp({ ...req.body, ip: req.ip }))),
   verifyOtp: asyncHandler(async (req, res) => {
     const data = await service.verifyCustomerOtp({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip });
     if (data.user?._id) await writeAuditLog({ actor: { type: "customer", id: data.user._id }, action: "customer.login", resourceType: "customer", resourceId: data.user._id, before: null, after: { phone: data.user.phoneNormalized }, req });
+    ok(res, data);
+  }),
+  sendEmailOtp: asyncHandler(async (req, res) => ok(res, await emailOtpService.sendEmailOtp({ ...req.body, ip: req.ip, userAgent: req.headers["user-agent"] }))),
+  resendEmailOtp: asyncHandler(async (req, res) => ok(res, await emailOtpService.resendEmailOtp({ ...req.body, ip: req.ip, userAgent: req.headers["user-agent"] }))),
+  verifyEmailOtp: asyncHandler(async (req, res) => {
+    const data = await emailOtpService.verifyEmailOtp({ ...req.body, deviceId: req.headers["x-device-id"], userAgent: req.headers["user-agent"], ip: req.ip });
+    await writeAuditLog({ actor: { type: "customer", id: data.user._id }, action: "customer.email_login", resourceType: "customer", resourceId: data.user._id, before: null, after: { email: data.user.email }, req });
     ok(res, data);
   }),
   adminLogin: asyncHandler(async (req, res) => {

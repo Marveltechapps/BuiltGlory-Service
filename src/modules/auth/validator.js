@@ -8,3 +8,7 @@ export const forgotPasswordValidator = Joi.object({ body: Joi.object({ countryCo
 export const resetPasswordValidator = Joi.object({ body: Joi.object({ countryCode: Joi.string().default("+91"), phone: Joi.string().pattern(/^\d{10}$/).required(), otp: otp.required(), requestId: Joi.string().allow("", null), newPassword: Joi.string().min(8).max(128).required() }).required() }).unknown(true);
 export const adminLoginValidator = Joi.object({ body: Joi.object({ email: Joi.string().email().required(), password: Joi.string().min(8).required() }).required() }).unknown(true);
 export const refreshValidator = Joi.object({ body: Joi.object({ refreshToken: Joi.string().required() }).required() }).unknown(true);
+const email = Joi.string().email({ tlds: { allow: false } }).trim().lowercase().required();
+export const sendEmailOtpValidator = Joi.object({ body: Joi.object({ email }).required() }).unknown(true);
+export const resendEmailOtpValidator = Joi.object({ body: Joi.object({ email }).required() }).unknown(true);
+export const verifyEmailOtpValidator = Joi.object({ body: Joi.object({ email, otp: otp.required(), requestId: Joi.string().trim().allow("", null) }).required() }).unknown(true);

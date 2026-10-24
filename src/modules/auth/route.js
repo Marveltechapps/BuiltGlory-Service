@@ -1,11 +1,9 @@
 import { Router } from "express";
 import { controller } from "./controller.js";
-import { emailOtpController } from "./auth.controller.js";
 import { validate } from "../../middleware/validate.js";
 import { authenticate } from "../../middleware/auth.js";
 import { authLimiter, emailOtpLimiter, otpLimiter } from "../../middleware/rateLimit.js";
-import { sendOtpValidator, verifyOtpValidator, adminLoginValidator, refreshValidator, passwordLoginValidator, setPasswordValidator, forgotPasswordValidator, resetPasswordValidator } from "./validator.js";
-import { resendEmailOtpValidator, sendEmailOtpValidator, verifyEmailOtpValidator } from "./auth.validator.js";
+import { sendOtpValidator, verifyOtpValidator, adminLoginValidator, refreshValidator, passwordLoginValidator, setPasswordValidator, forgotPasswordValidator, resetPasswordValidator, sendEmailOtpValidator, resendEmailOtpValidator, verifyEmailOtpValidator } from "./validator.js";
 const router = Router();
 router.post("/auth/customer/otp/send", otpLimiter, validate(sendOtpValidator), controller.sendOtp);
 router.post("/auth/customer/otp/verify", otpLimiter, validate(verifyOtpValidator), controller.verifyOtp);
@@ -13,9 +11,9 @@ router.post("/auth/customer/password/login", authLimiter, validate(passwordLogin
 router.put("/me/password", authenticate("customer"), validate(setPasswordValidator), controller.setPassword);
 router.post("/auth/customer/password/forgot", otpLimiter, validate(forgotPasswordValidator), controller.forgotPassword);
 router.post("/auth/customer/password/reset", otpLimiter, validate(resetPasswordValidator), controller.resetPassword);
-router.post("/auth/email/otp/send", emailOtpLimiter, validate(sendEmailOtpValidator), emailOtpController.sendOtp);
-router.post("/auth/email/otp/resend", emailOtpLimiter, validate(resendEmailOtpValidator), emailOtpController.resendOtp);
-router.post("/auth/email/otp/verify", emailOtpLimiter, validate(verifyEmailOtpValidator), emailOtpController.verifyOtp);
+router.post("/auth/email/otp/send", emailOtpLimiter, validate(sendEmailOtpValidator), controller.sendEmailOtp);
+router.post("/auth/email/otp/resend", emailOtpLimiter, validate(resendEmailOtpValidator), controller.resendEmailOtp);
+router.post("/auth/email/otp/verify", emailOtpLimiter, validate(verifyEmailOtpValidator), controller.verifyEmailOtp);
 router.post("/auth/admin/login", authLimiter, validate(adminLoginValidator), controller.adminLogin);
 router.post("/auth/refresh", authLimiter, validate(refreshValidator), controller.refresh);
 router.post("/auth/logout", authLimiter, validate(refreshValidator), controller.logout);

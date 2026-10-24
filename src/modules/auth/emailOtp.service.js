@@ -4,7 +4,7 @@ import { logger } from "../../config/logger.js";
 import { AppError, conflict, unauthorized } from "../../shared/errors/AppError.js";
 import { makeReferenceId } from "../../shared/id.js";
 import { issueSession } from "./service.js";
-import { repository } from "./auth.repository.js";
+import { repository } from "./repository.js";
 import { sendEmailOtp as deliverEmailOtp } from "./email.service.js";
 
 const OTP_DIGITS = 6;
@@ -35,9 +35,7 @@ const assertCanSend = async (email) => {
 
 const createAndDeliverOtp = async ({ email, ip, userAgent }) => {
   const normalizedEmail = normalizeEmail(email);
-  console.log("EMAIL_OTP_AUTH_SERVICE_START", { email: normalizedEmail });
   await assertCanSend(normalizedEmail);
-  console.log("EMAIL_OTP_COOLDOWN_PASSED", { email: normalizedEmail });
   await repository.invalidateActiveEmailOtps({ email: normalizedEmail });
 
   const otp = generateOtp();
@@ -56,15 +54,7 @@ const createAndDeliverOtp = async ({ email, ip, userAgent }) => {
   });
 
   try {
-    console.log("EMAIL_OTP_DELIVER_EMAIL_SERVICE_CALL", {
-      requestId: otpRecord.requestId,
-      email: normalizedEmail
-    });
     await deliverEmailOtp({ email: normalizedEmail, otp });
-    console.log("EMAIL_OTP_DELIVER_EMAIL_SERVICE_DONE", {
-      requestId: otpRecord.requestId,
-      email: normalizedEmail
-    });
     const sentOtp = await repository.markEmailOtpSent(otpRecord._id);
     logger.info({ event: "email_otp_sent", requestId: sentOtp.requestId, email: normalizedEmail });
     return {
