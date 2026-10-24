@@ -1,4 +1,4 @@
-import { assertTransition, validatePropertyPublication } from "../shared/workflows.js";
+import { assertTransition, validatePropertyPublication } from "../services/workflow.rules.js";
 describe("workflow guards", () => {
   test("rejects invalid property transition", () => {
     expect(() => assertTransition("propertyStatus", "sold", "available")).toThrow("Invalid state transition");

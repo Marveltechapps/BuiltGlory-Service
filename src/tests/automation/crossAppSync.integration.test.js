@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
-import { BuyEnquiry } from "../../modules/buyEnquiries/model.js";
-import { Visit } from "../../modules/visits/model.js";
+import { BuyEnquiry } from "../../modules/buyEnquiries/buyEnquiries.model.js";
+import { Visit } from "../../modules/visits/visits.model.js";
 import { corsOriginOption } from "../../config/cors.js";
 import { app, bearer, seedAdmin, seedCustomer, seedProperty, setupIntegrationDb } from "../helpers/integrationHarness.js";
 

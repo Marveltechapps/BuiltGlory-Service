@@ -10,9 +10,9 @@ import { requestContext } from "./middleware/requestContext.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { mongoSanitize } from "./middleware/mongoSanitize.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
-import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
-import routes from "./routes.js";
-import signinRoutes from "./modules/signin/route.js";
+import { errorHandler, notFoundHandler } from "./modules/error/index.js";
+import routes from "./routes/index.js";
+import signinRoutes from "./modules/signin/signin.routes.js";
 import { openapi } from "./docs/openapi.js";
 import { metricsSnapshot } from "./services/metrics.service.js";
 export const createApp = () => {

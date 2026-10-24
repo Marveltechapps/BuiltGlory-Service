@@ -1,5 +1,5 @@
-import { visitDateTime } from "../shared/visitTime.js";
-import { buyerProgressPercent, buyerStepIndex, sellerProgressPercent, sellerStepIndex } from "../shared/customerProgress.js";
+import { visitDateTime } from "../utils/visitTime.js";
+import { buyerProgressPercent, buyerStepIndex, sellerProgressPercent, sellerStepIndex } from "../services/customerProgress.service.js";
 
 describe("visit slot timezone", () => {
   it("treats 11:00 AM as 11:00 in Asia/Kolkata", () => {

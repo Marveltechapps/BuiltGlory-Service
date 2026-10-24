@@ -1,6 +1,6 @@
-import { Notification } from "../modules/notifications/model.js";
-import { User } from "../modules/users/model.js";
-import { makeReferenceId } from "../shared/id.js";
+import { Notification } from "../modules/notifications/notifications.model.js";
+import { User } from "../modules/users/users.model.js";
+import { makeReferenceId } from "../utils/id.js";
 import { renderTemplate } from "./notificationTemplates.service.js";
 import { sendViaProvider } from "./notificationProviders.service.js";
 import { logger } from "../config/logger.js";

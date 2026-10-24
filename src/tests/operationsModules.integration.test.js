@@ -1,6 +1,6 @@
 import request from "supertest";
 import { app, bearer, models, seedAdmin, seedCustomer, seedProperty, setupIntegrationDb } from "./helpers/integrationHarness.js";
-import { makeReferenceId } from "../shared/id.js";
+import { makeReferenceId } from "../utils/id.js";
 
 setupIntegrationDb();
 

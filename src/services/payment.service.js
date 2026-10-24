@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { env } from "../config/env.js";
-import { domainError } from "../shared/errors/AppError.js";
+import { domainError } from "../modules/error/index.js";
 export const verifyWebhookSignature = (rawBody, signature) => {
   if (!env.RAZORPAY_WEBHOOK_SECRET) throw domainError("Payment webhook secret is not configured.");
   const expected = crypto.createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest("hex");

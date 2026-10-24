@@ -1,4 +1,4 @@
-import { connectDatabase, disconnectDatabase } from "../config/database.js";
+import { connectDatabase, disconnectDatabase } from "../database/connection.js";
 import { logger } from "../config/logger.js";
 import { runAllJobs } from "./index.js";
 

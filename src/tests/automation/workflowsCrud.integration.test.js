@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
-import { User } from "../../modules/users/model.js";
-import { Property } from "../../modules/properties/model.js";
+import { User } from "../../modules/users/users.model.js";
+import { Property } from "../../modules/properties/properties.model.js";
 import { app, bearer, seedAdmin, seedBuyEnquiry, seedCustomer, seedProperty, setupIntegrationDb } from "../helpers/integrationHarness.js";
 
 jest.setTimeout(120_000);

@@ -1,4 +1,4 @@
-import { domainError } from "../shared/errors/AppError.js";
+import { domainError } from "../modules/error/index.js";
 
 export const PROPERTY_DOCUMENT_CHECKLIST = ["title_deed", "encumbrance_certificate", "tax_receipt", "rera_certificate"];
 export const SELLER_DOCUMENT_CHECKLIST = ["sale_deed", "khata_certificate", "property_tax_receipt", "identity_proof"];

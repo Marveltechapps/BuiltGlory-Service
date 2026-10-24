@@ -1,4 +1,4 @@
-import { domainError } from "../shared/errors/AppError.js";
+import { domainError } from "../modules/error/index.js";
 
 export const REQUIRED_KYC_MATRIX = {
   resident: ["pan", "aadhaar"],

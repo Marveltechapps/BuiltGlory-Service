@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
-import { AppError } from "../shared/errors/AppError.js";
+import { AppError } from "../modules/error/index.js";
 
 const DEFAULT_OTP_TEMPLATE =
   // Must match the DLT-approved template for sender EVOLGN.

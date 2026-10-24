@@ -1,8 +1,8 @@
 import { jest } from "@jest/globals";
-import { Property } from "../../modules/properties/model.js";
-import { errorHandler } from "../../middleware/errorHandler.js";
-import { AppError } from "../../shared/errors/AppError.js";
-import { createRepository } from "../../shared/repositoryFactory.js";
+import { Property } from "../../modules/properties/properties.model.js";
+import { errorHandler } from "../../modules/error/index.js";
+import { AppError } from "../../modules/error/index.js";
+import { createRepository } from "../../database/repository.factory.js";
 import { seedProperty, setupIntegrationDb } from "../helpers/integrationHarness.js";
 
 jest.setTimeout(60_000);

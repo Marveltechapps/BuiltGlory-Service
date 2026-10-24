@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 import { app, setupIntegrationDb } from "./helpers/integrationHarness.js";
-import { User } from "../modules/users/model.js";
+import { User } from "../modules/users/users.model.js";
 
 jest.setTimeout(60_000);
 

@@ -4,10 +4,10 @@ import { Server } from "socket.io";
 import { env } from "../config/env.js";
 import { corsOriginOption } from "../config/cors.js";
 import { getRedis } from "../config/redis.js";
-import { Admin } from "../modules/admins/model.js";
-import { User } from "../modules/users/model.js";
-import { service as supportTicketService } from "../modules/supportTickets/service.js";
-import { service as sellRequestService } from "../modules/sellRequests/service.js";
+import { Admin } from "../modules/admins/admins.model.js";
+import { User } from "../modules/users/users.model.js";
+import { service as supportTicketService } from "../modules/supportTickets/supportTickets.service.js";
+import { service as sellRequestService } from "../modules/sellRequests/sellRequests.service.js";
 
 let io;
 
