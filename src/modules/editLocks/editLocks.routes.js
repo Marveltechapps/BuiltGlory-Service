@@ -1,23 +1,15 @@
 import { Router } from "express";
+import { controller } from "./editLocks.controller.js";
 import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { asyncHandler } from "../../utils/asyncHandler.js";
-import { ok } from "../../utils/response.js";
-import { service } from "./editLocks.service.js";
 import { lockParamsValidator, lockValidator } from "./editLocks.validation.js";
 
 const router = Router();
 
-router.get("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockParamsValidator), asyncHandler(async (req, res) => {
-  ok(res, await service.get(req.params.entityType, req.params.entityId, req.actor));
-}));
+router.get("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockParamsValidator), controller.getAdminWorkflowLock);
 
-router.post("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockValidator), asyncHandler(async (req, res) => {
-  ok(res, await service.claim(req.params.entityType, req.params.entityId, req.actor, req.body));
-}));
+router.post("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockValidator), controller.createAdminWorkflowLock);
 
-router.delete("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockParamsValidator), asyncHandler(async (req, res) => {
-  ok(res, await service.release(req.params.entityType, req.params.entityId, req.actor));
-}));
+router.delete("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockParamsValidator), controller.removeAdminWorkflowLock);
 
 export default router;

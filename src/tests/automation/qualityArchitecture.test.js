@@ -100,6 +100,31 @@ describe("architecture", () => {
     expect(unmounted).toEqual([]);
   });
 
+  test("module files follow the <module>.<role>.js naming convention", () => {
+    const offenders = fs.readdirSync(modulesRoot)
+      .filter((name) => name !== "error")
+      .flatMap((name) => fs.readdirSync(path.join(modulesRoot, name))
+        .filter((file) => file.endsWith(".js") && !file.startsWith(`${name}.`))
+        .map((file) => `${name}/${file}`));
+    expect(offenders).toEqual([]);
+  });
+
+  test("every feature module owns an error file", () => {
+    const missing = fs.readdirSync(modulesRoot)
+      .filter((name) => name !== "error")
+      .filter((name) => !fs.existsSync(path.join(modulesRoot, name, `${name}.error.js`)));
+    expect(missing).toEqual([]);
+  });
+
+  test("route files only wire middleware to controller handlers", () => {
+    const offenders = fs.readdirSync(modulesRoot)
+      .map((name) => path.join(modulesRoot, name, `${name}.routes.js`))
+      .filter((file) => fs.existsSync(file))
+      .filter((file) => /async\s*\(req|asyncHandler\(|controller\.action\(/.test(fs.readFileSync(file, "utf8")))
+      .map((file) => path.relative(srcRoot, file));
+    expect(offenders).toEqual([]);
+  });
+
   test("persistence models register the soft-delete plugin", () => {
     const exceptions = new Set(["adminSettings", "editLocks", "auth", "reports", "error"]);
     const missing = fs.readdirSync(modulesRoot)

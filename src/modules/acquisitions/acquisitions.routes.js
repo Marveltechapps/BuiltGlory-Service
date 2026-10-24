@@ -13,9 +13,5 @@ router.patch("/admin/acquisitions/:acquisitionId/negotiation", authenticate("adm
 router.patch("/admin/acquisitions/:acquisitionId/token", authenticate("admin"), requirePermission("acquisitions.write"), validate(updateValidator), controller.update);
 router.patch("/admin/acquisitions/:acquisitionId/documentation", authenticate("admin"), requirePermission("acquisitions.write"), validate(updateValidator), controller.update);
 router.patch("/admin/acquisitions/:acquisitionId/payout", authenticate("admin"), requirePermission("acquisitions.write"), validate(updateValidator), controller.update);
-router.post("/admin/acquisitions/:acquisitionId/convert-to-property", authenticate("admin"), requirePermission("properties.write"), controller.action(async (req, res) => {
-  const { service } = await import("./acquisitions.service.js");
-  const data = await service.convertToProperty(req.params.acquisitionId, req.body || {}, req.actor, req);
-  res.status(201).json({ data, meta: { requestId: res.locals.requestId } });
-}));
+router.post("/admin/acquisitions/:acquisitionId/convert-to-property", authenticate("admin"), requirePermission("properties.write"), controller.createAdminAcquisitionsConvertToProperty);
 export default router;
