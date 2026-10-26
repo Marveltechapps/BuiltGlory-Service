@@ -1,25 +1,12 @@
-import { readFileSync } from "node:fs";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 import { AppError } from "../modules/error/index.js";
 
 const DEFAULT_OTP_TEMPLATE =
-  // Must match the DLT-approved template for sender EVOLGN.
-  "Dear Applicant, Your OTP for Mobile No. Verification is {otp} . MJPTBCWREIS - EVOLGN";
+  // Replace via SMS_OTP_MESSAGE_TEMPLATE with BuiltGlory's DLT-approved text for sender EVOLGN.
+  "Dear Applicant, Your OTP for Mobile No. Verification is {otp}. BuiltGlory - EVOLGN";
 
-const readLegacySmsVendorUrl = () => {
-  try {
-    const config = JSON.parse(readFileSync(new URL("../../config.json", import.meta.url), "utf8"));
-    return typeof config.smsvendor === "string" ? config.smsvendor.trim() : "";
-  } catch {
-    return "";
-  }
-};
-
-const resolveSmsVendorUrl = () => {
-  const fromEnv = String(env.SMS_VENDOR_URL || env.SMS_PROVIDER_URL || "").trim();
-  return fromEnv || readLegacySmsVendorUrl();
-};
+const resolveSmsVendorUrl = () => String(env.SMS_VENDOR_URL || env.SMS_PROVIDER_URL || "").trim();
 
 export const buildOtpSmsMessage = (otp) => {
   const template = String(env.SMS_OTP_MESSAGE_TEMPLATE || DEFAULT_OTP_TEMPLATE);
@@ -101,7 +88,7 @@ const mapSmsProviderError = (data, httpStatus) => {
 const deliverViaVendor = async ({ mobileNumber, otp }) => {
   const vendorUrl = resolveSmsVendorUrl();
   if (!vendorUrl) {
-    throw new AppError(500, "SMS_CONFIG_MISSING", "SMS vendor is not configured. Set SMS_VENDOR_URL or config.json smsvendor.");
+    throw new AppError(500, "SMS_CONFIG_MISSING", "SMS vendor is not configured. Set SMS_VENDOR_URL.");
   }
 
   const url = `${vendorUrl}to_mobileno=${encodeURIComponent(mobileNumber)}&sms_text=${encodeURIComponent(buildOtpSmsMessage(otp))}`;

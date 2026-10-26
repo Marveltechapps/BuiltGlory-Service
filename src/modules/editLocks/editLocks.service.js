@@ -46,7 +46,7 @@ const actorName = async (actor) => {
   return admin?.name || admin?.email || "Admin";
 };
 const hasPermission = (actor, permission) =>
-  actor?.role === "super_admin" || actor?.permissions?.includes(permission);
+  actor?.role === "super_admin" || actor?.permissions?.includes("*") || actor?.permissions?.includes(permission);
 const assertEntityAccess = async (entityType, entityId, actor, mode) => {
   const config = entityConfig[entityType];
   const permission = config?.[mode];

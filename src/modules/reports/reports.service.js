@@ -16,9 +16,35 @@ import { ReportExport } from "./reports.export.model.js";
 import { ReportSchedule } from "./reports.schedule.model.js";
 import { service as adminSettingsService } from "../adminSettings/adminSettings.service.js";
 import crypto from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import ExcelJS from "exceljs";
 
 const clean = { isDeleted: { $ne: true } };
+const exportDirectory = path.resolve(process.cwd(), "storage", "reports");
+
+const exportFilePath = (storageKey) => {
+  const base = path.basename(String(storageKey || "export.bin"));
+  return path.join(exportDirectory, base);
+};
+
+const writeExportFile = async (storageKey, buffer) => {
+  await mkdir(exportDirectory, { recursive: true });
+  const filePath = exportFilePath(storageKey);
+  await writeFile(filePath, buffer);
+  return filePath;
+};
+
+const readExportFile = async (exportJob) => {
+  if (exportJob.storageKey) {
+    try {
+      return await readFile(exportFilePath(exportJob.storageKey));
+    } catch {
+      // Older jobs kept the bytes on the document.
+    }
+  }
+  return exportJob.fileContent || null;
+};
 const fallbackSlaLimits = { enquiry: 2, stagePayment: 4, interior: 24 };
 
 const countBy = async (Model, field, filter = clean) =>
@@ -34,17 +60,17 @@ const dateFilter = (query = {}) => {
   return Object.keys(createdAt).length ? { ...clean, createdAt } : clean;
 };
 
-const startOfToday = () => {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
+const IST = "Asia/Kolkata";
+const istDateKey = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: IST, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+
+const startOfToday = () => new Date(`${istDateKey(new Date())}T00:00:00+05:30`);
+
+const startOfIstMonth = () => {
+  const key = istDateKey(new Date());
+  return new Date(`${key.slice(0, 7)}-01T00:00:00+05:30`);
 };
 
-const startOfLastNDays = (days) => {
-  const date = startOfToday();
-  date.setDate(date.getDate() - (days - 1));
-  return date;
-};
+const startOfLastNDays = (days) => new Date(startOfToday().getTime() - (days - 1) * 86400000);
 
 const addDays = (date, days) => new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 
@@ -352,9 +378,13 @@ export const service = {
       acquisitionStages,
       salesStages,
       revenue,
+      totalProperties,
+      totalEnquiries,
+      stagePaymentCount,
       enquiriesByDay,
       propertiesByType,
       recentBuyEnquiries,
+      openNewEnquiries,
       recentSellRequests,
       stagePaymentDeals,
       interiorLeads,
@@ -378,7 +408,10 @@ export const service = {
         .lean(),
       countBy(Acquisition, "stage"),
       countBy(SalesDeal, "stage"),
-      Payment.aggregate([{ $match: { ...clean, status: "paid" } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      Payment.aggregate([{ $match: { ...clean, status: "paid", createdAt: { $gte: startOfIstMonth() } } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+      Property.countDocuments(clean),
+      BuyEnquiry.countDocuments(clean),
+      SalesDeal.countDocuments({ ...clean, stage: "stage_payment" }),
       BuyEnquiry.aggregate([
         { $match: { ...clean, submittedAt: { $gte: sevenDaysAgo } } },
         { $group: { _id: { $dateToString: { date: "$submittedAt", format: "%Y-%m-%d", timezone: "Asia/Kolkata" } }, count: { $sum: 1 } } },
@@ -387,6 +420,7 @@ export const service = {
       ]),
       countBy(Property, "type", { ...clean, status: { $in: ["available", "reserved", "under_construction"] } }),
       BuyEnquiry.find(clean).sort({ submittedAt: -1, createdAt: -1 }).limit(5),
+      BuyEnquiry.find({ ...clean, status: "new" }).sort({ submittedAt: 1, createdAt: 1 }).limit(100),
       SellRequest.find({ ...clean, status: { $in: ["new", "under_review", "changes_requested"] } }).sort({ submittedAt: -1, createdAt: -1 }).limit(5),
       SalesDeal.find({ ...clean, stage: "stage_payment" }).sort({ lastActivityAt: 1, createdAt: 1 }).limit(10),
       InteriorLead.find({ ...clean, status: { $in: ["new", "contacted"] } }).populate("buyerId", "name phone email").populate("propertyId", "title").sort({ slaDeadline: 1, createdAt: 1 }).limit(10),
@@ -396,7 +430,7 @@ export const service = {
     const enquiryTrend = Array.from({ length: 7 }, (_, index) => {
       const date = new Date(sevenDaysAgo);
       date.setDate(sevenDaysAgo.getDate() + index);
-      const key = date.toISOString().slice(0, 10);
+      const key = istDateKey(date);
       return { date: key, day: formatDay(date), count: enquiryMap.get(key) || 0 };
     });
     const recentEnquiries = recentBuyEnquiries.map((item) => ({
@@ -420,8 +454,7 @@ export const service = {
       viewPath: `/admin/enquiries/sell/${asId(item)}`
     }));
     const slaQueues = {
-      enquiries: recentBuyEnquiries
-        .filter((item) => item.status === "new")
+      enquiries: openNewEnquiries
         .map((item) => slaItem({
           id: asId(item),
           name: item.buyerSnapshot?.name || "Buyer",
@@ -456,7 +489,8 @@ export const service = {
       })
     };
     return {
-      kpis: { activeProperties, featuredProperties, upcomingProperties, newEnquiries, tokenPaidDeals, closedDeals, revenue: revenue[0]?.total || 0, overdueCallbacks, openSupportTickets, pendingKycUsers, pendingSellRequests },
+      kpis: { activeProperties, totalProperties, featuredProperties, upcomingProperties, newEnquiries, totalEnquiries, tokenPaidDeals, stagePaymentDeals: stagePaymentCount, closedDeals, revenue: revenue[0]?.total || 0, overdueCallbacks, openSupportTickets, pendingKycUsers, pendingSellRequests },
+      slaLimits: overviewSlaLimits,
       schedule: todaysVisits.map(compactOverviewVisit),
       recentActivities: recentAuditLogs.map((log) => ({
         id: asId(log),
@@ -751,6 +785,7 @@ export const service = {
     try {
       const { reportType, fields, rows } = await buildExportRows({ ...filters, format });
       const { buffer, mimeType } = await renderExportFile({ format, fields, rows });
+      await writeExportFile(exportJob.storageKey, buffer);
       exportJob.set({
         status: "completed",
         completedAt: new Date(),
@@ -758,7 +793,7 @@ export const service = {
         mimeType,
         sizeBytes: buffer.length,
         rowCount: rows.length,
-        fileContent: buffer,
+        fileContent: undefined,
         downloadToken: crypto.randomBytes(24).toString("hex"),
         downloadTokenExpiresAt: expiresAt
       });
@@ -844,9 +879,10 @@ export const service = {
     if (!token || token !== exportJob.downloadToken || exportJob.downloadTokenExpiresAt <= new Date()) {
       throw forbidden("Invalid or expired export download token.");
     }
-    if (!exportJob.fileContent) throw notFound("Export file content not found.");
+    const buffer = await readExportFile(exportJob);
+    if (!buffer) throw notFound("Export file content not found.");
     return {
-      buffer: exportJob.fileContent,
+      buffer,
       fileName: exportJob.fileName || `${exportJob.referenceId}.${exportJob.format}`,
       mimeType: exportJob.mimeType || "application/octet-stream"
     };

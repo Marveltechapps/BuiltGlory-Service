@@ -31,7 +31,7 @@ const schema = Joi.object({
   QUARANTINE_S3_BUCKET: Joi.string().allow("").default(""),
   SMS_PROVIDER_URL: Joi.string().allow("").default(""),
   SMS_PROVIDER_TOKEN: Joi.string().allow("").default(""),
-  // Spear UC / gateway base URL ending with "&" (falls back to config.json smsvendor)
+  // Spear UC / gateway base URL ending with "&". Credentials live only in the environment.
   SMS_VENDOR_URL: Joi.string().allow("").default(""),
   // vendor = real SMS gateway (production). log = store OTP + log to server (non-production only).
   SMS_DELIVERY_MODE: Joi.string().valid("vendor", "log").default("vendor"),
@@ -71,4 +71,27 @@ const schema = Joi.object({
 }).unknown();
 const { value, error } = schema.validate(process.env, { abortEarly: false });
 if (error) throw new Error("Invalid environment: " + error.details.map((d) => d.message).join(", "));
+
+const DEV_ACCESS_SECRET = "dev-access-secret-change-before-production";
+const DEV_REFRESH_SECRET = "dev-refresh-secret-change-before-production";
+const hosted = Boolean(
+  process.env.RENDER
+  || process.env.RAILWAY_ENVIRONMENT
+  || process.env.FLY_APP_NAME
+  || process.env.KUBERNETES_SERVICE_HOST
+  || process.env.WEBSITE_INSTANCE_ID
+  || process.env.DYNO
+);
+if (hosted && !process.env.NODE_ENV) {
+  throw new Error("Refusing to start: deployed environments must set NODE_ENV=production (or staging) and real JWT secrets.");
+}
+if (["production", "staging"].includes(value.NODE_ENV)) {
+  if (!process.env.JWT_ACCESS_SECRET || value.JWT_ACCESS_SECRET === DEV_ACCESS_SECRET) {
+    throw new Error("JWT_ACCESS_SECRET must be a unique secret when NODE_ENV is production or staging.");
+  }
+  if (!process.env.JWT_REFRESH_SECRET || value.JWT_REFRESH_SECRET === DEV_REFRESH_SECRET) {
+    throw new Error("JWT_REFRESH_SECRET must be a unique secret when NODE_ENV is production or staging.");
+  }
+}
+
 export const env = value;

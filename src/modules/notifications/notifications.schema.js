@@ -7,6 +7,7 @@ export const schemaDefinition = {
   title: String, message: String, notificationType: String, listingId: String, enquiryId: String, propertyId: String, dealId: String, screen: String,
   entityId: String, entityType: String, image: String,
   recipient: String, templateId: String, payload: mongoose.Schema.Types.Mixed, provider: String, providerMessageId: String, providerResponse: mongoose.Schema.Types.Mixed, attempts: { type: Number, default: 0 }, maxAttempts: { type: Number, default: 5 }, nextAttemptAt: Date, sentAt: Date, deliveredAt: Date, failedAt: Date, deadLetterAt: Date, failureReason: String, marketing: { type: Boolean, default: false }, preferenceCheckedAt: Date,
+  audience: String,
   isRead: { type: Boolean, default: false, index: true }, readAt: Date, archivedAt: Date
 };
 export const configureSchema = (schema) => { schema.index({ status: 1, nextAttemptAt: 1 }); schema.index({ userId: 1, createdAt: -1 }); schema.index({ adminId: 1, createdAt: -1 }); schema.index({ event: 1, channel: 1 }); };

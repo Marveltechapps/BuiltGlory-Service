@@ -35,3 +35,8 @@ postman/
 postman-*
 *.md
 !README.md
+!ARCHITECTURE.md
+
+# Secrets and generated files
+config.json
+storage/

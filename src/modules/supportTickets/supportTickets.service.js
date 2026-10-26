@@ -72,7 +72,10 @@ async function notifyAgentsSupportMessage(ticket, message) {
   const assignedId = ticket.assignedTo?._id || ticket.assignedTo;
   const admins = assignedId
     ? await Admin.find({ _id: assignedId, isActive: true }).select("_id").lean()
-    : await Admin.find({ isActive: true, permissions: "support.read" }).select("_id").limit(25).lean();
+    : await Admin.find({
+      isActive: true,
+      $or: [{ permissions: "support.read" }, { permissions: "*" }, { role: "super_admin" }]
+    }).select("_id").limit(25).lean();
 
   await Promise.all(
     admins.map((admin) =>
@@ -88,7 +91,9 @@ async function notifyAgentsSupportMessage(ticket, message) {
         entityId: ticketId,
         entityType: "support_ticket",
         dedupeKey: `support_agent_message:${ticketId}:${admin._id}:${ticket.lastMessageAt?.toISOString?.() || Date.now()}`,
+        audience: "admin",
         payload: {
+          audience: "admin",
           title: ticket.channel === "live_chat" ? "New live chat message" : "New support ticket message",
           message: message.slice(0, 140),
           ticketId,
@@ -165,6 +170,12 @@ export const service = {
         : undefined;
 
     const before = await repository.findById(id);
+    if (actor?.type === "admin" && actor.role !== "super_admin") {
+      const perms = actor.permissions || [];
+      if (!perms.includes("support.write") && !perms.includes("*")) {
+        throw domainError("You do not have permission to reply to support chats.");
+      }
+    }
     if (actor?.type === "customer" && String(before.userId?._id || before.userId) !== String(actor.id)) {
       throw notFound(`${repository.Model.modelName} not found.`);
     }

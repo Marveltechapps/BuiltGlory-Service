@@ -34,6 +34,14 @@ export const authLimiter = rateLimit({
   max: isDev ? 200 : 25
 });
 
+// Refresh is called for every expired access token. Keep it off the tight login bucket
+// so an office NAT does not log the whole team out.
+export const refreshLimiter = rateLimit({
+  ...baseOptions,
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 100000 : 600
+});
+
 export const otpLimiter = rateLimit({
   ...baseOptions,
   windowMs: 15 * 60 * 1000,

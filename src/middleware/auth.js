@@ -22,6 +22,12 @@ export const authenticate = (expectedType) => async (req, res, next) => {
     if (await getRedis().get("access:blacklist:" + tokenHash(token))) throw unauthorized("Access token has been revoked.");
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { issuer: env.JWT_ISSUER, audience: env.JWT_AUDIENCE });
     if (expectedType && decoded.type !== expectedType) throw unauthorized("Invalid token type.");
+    if (decoded.sid) {
+      const rawSession = await getRedis().get("session:" + decoded.sid);
+      if (!rawSession) throw unauthorized("Session is no longer active.");
+      const session = JSON.parse(rawSession);
+      if (session.status !== "active") throw unauthorized("Session is no longer active.");
+    }
     if (decoded.type === "admin") {
       const admin = await Admin.findById(decoded.sub);
       if (!admin || !admin.isActive) throw unauthorized("Admin account inactive.");

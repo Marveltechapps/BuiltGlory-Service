@@ -133,8 +133,10 @@ export const service = {
     };
   },
   async create(data, actor) {
-    const buyer = await User.findById(actor?.id);
-    if (!buyer || buyer.isBlocked) throw domainError("Blocked or inactive customers cannot schedule visits.");
+    const buyerId = actor?.type === "admin" ? data.buyerId : actor?.id;
+    if (actor?.type === "admin" && !buyerId) throw domainError("buyerId is required to schedule a visit.");
+    const buyer = await User.findById(buyerId);
+    if (!buyer || buyer.isBlocked || buyer.isActive === false) throw domainError("Blocked or inactive customers cannot schedule visits.");
     await ensureSchedulableProperty(data.propertyId, data.visitType);
     if (visitDateTime(data) <= new Date()) throw domainError("Visit date and time must be in the future.");
     await assertSlotAvailable(data);
@@ -142,7 +144,12 @@ export const service = {
     if ((data.language || data.preferredLanguage) && !preferredLanguage) throw domainError("Choose English, Tamil, Hindi, or Kannada for the video call.");
     const visitBody = { ...data };
     delete visitBody.language;
-    const visit = await baseService.create({ ...visitBody, preferredLanguage, buyerId: buyer._id }, actor);
+    const visit = await baseService.create({
+      ...visitBody,
+      preferredLanguage,
+      buyerId: buyer._id,
+      ...(actor?.type === "admin" ? { assignedAdmin: data.assignedAdmin || actor.id } : {})
+    }, actor);
     await Property.updateOne({ _id: data.propertyId }, { $inc: { "metrics.visits": 1 } });
     const property = await Property.findById(data.propertyId).select("acquisitionId").lean();
     if (property?.acquisitionId) {
@@ -154,6 +161,7 @@ export const service = {
   },
   async transition(id, to, actor, req, extra = {}) {
     const before = await repository.findById(id);
+    const statusUnchanged = before.status === to;
     if (extra.callLog) {
       extra.$push = { ...(extra.$push || {}), callLogs: { ...extra.callLog, calledAt: extra.callLog.calledAt || new Date(), calledBy: actor?.id } };
       delete extra.callLog;
@@ -166,21 +174,22 @@ export const service = {
       extra.notes = extra.visitNotes.map((note) => ({ text: note.text, createdAt: note.createdAt || new Date(), createdBy: actor?.id }));
       delete extra.visitNotes;
     }
-    if (to === "rescheduled") {
+    if (!statusUnchanged && to === "rescheduled") {
       if (!extra.visitDate || !extra.visitTime || visitDateTime(extra) <= new Date()) throw domainError("Reschedule requires a future visit date and time.");
       await assertSlotAvailable({ propertyId: before.propertyId, visitType: before.visitType, ...extra }, id);
       extra.$push = { ...(extra.$push || {}), rescheduleHistory: { previousDate: before.visitDate, previousTime: before.visitTime, newDate: extra.visitDate, newTime: extra.visitTime, reason: extra.reason, actorType: actor?.type, actorId: actor?.id, changedAt: new Date() } };
       extra.$inc = { rescheduleCount: 1 };
     }
-    if (to === "cancelled") {
+    if (!statusUnchanged && to === "cancelled") {
       if (!extra.reason && !extra.cancelReason) throw domainError("Cancellation requires a reason.");
       extra.cancelReason = extra.cancelReason || extra.reason;
     }
-    if (to === "confirmed" && before.visitType === "virtual" && !(before.meetingLink || extra.meetingLink)) throw domainError("Virtual visits require a meeting link before confirmation.");
-    if (to === "completed") {
-      const feedback = extra.feedback || {};
+    if (!statusUnchanged && to === "confirmed" && before.visitType === "virtual" && !(before.meetingLink || extra.meetingLink)) throw domainError("Virtual visits require a meeting link before confirmation.");
+    if (!statusUnchanged && to === "completed") {
+      const saved = before.feedback?.toObject?.() || before.feedback || {};
+      const feedback = extra.feedback?.buyerInterest ? extra.feedback : saved;
       if (!feedback.buyerInterest || !feedback.notes || !feedback.nextAction) throw domainError("Completed visits require feedback.");
-      extra.feedback = { ...feedback, completedAt: new Date() };
+      extra.feedback = { ...feedback, completedAt: feedback.completedAt || new Date() };
     }
     const visit = await baseService.transition(id, to, actor, req, extra);
     await syncLinkedEnquiryStatus(visit, to);

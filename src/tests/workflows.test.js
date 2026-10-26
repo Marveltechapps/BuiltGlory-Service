@@ -1,7 +1,8 @@
 import { assertTransition, validatePropertyPublication } from "../services/workflow.rules.js";
 describe("workflow guards", () => {
   test("rejects invalid property transition", () => {
-    expect(() => assertTransition("propertyStatus", "sold", "available")).toThrow("Invalid state transition");
+    expect(() => assertTransition("propertyStatus", "sold", "available")).not.toThrow();
+    expect(() => assertTransition("propertyStatus", "sold", "draft")).toThrow("Invalid state transition");
   });
   test("requires public listing fields", () => {
     expect(() => validatePropertyPublication({ title: "x", address: {}, media: {} })).toThrow("Property cannot be published");

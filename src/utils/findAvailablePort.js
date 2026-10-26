@@ -2,15 +2,16 @@
  * Bind `httpServer` starting at `preferredPort`, advancing on EADDRINUSE.
  * Uses real listen attempts (no separate probe) to avoid Windows dual-stack false frees.
  */
-export async function listenWithPortFallback(httpServer, preferredPort, { maxAttempts = 100 } = {}) {
+export async function listenWithPortFallback(httpServer, preferredPort, { maxAttempts = 100, allowFallback = true } = {}) {
   const start = Number(preferredPort);
   if (!Number.isInteger(start) || start < 1 || start > 65535) {
     throw new Error(`Invalid preferred port: ${preferredPort}`);
   }
 
+  const attempts = allowFallback ? maxAttempts : 1;
   let lastError;
 
-  for (let offset = 0; offset < maxAttempts; offset += 1) {
+  for (let offset = 0; offset < attempts; offset += 1) {
     const port = start + offset;
     if (port > 65535) break;
 
@@ -38,7 +39,9 @@ export async function listenWithPortFallback(httpServer, preferredPort, { maxAtt
     } catch (error) {
       lastError = error;
       if (error.code !== "EADDRINUSE") throw error;
-      // Server can listen again after EADDRINUSE; continue to next port.
+      if (!allowFallback) {
+        throw new Error(`Port ${start} is already in use. Refusing to bind another port outside development.`);
+      }
     }
   }
 

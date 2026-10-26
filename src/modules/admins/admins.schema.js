@@ -7,7 +7,7 @@ export const schemaDefinition = {
   passwordHash: { type: String, required: true, select: false },
   role: { type: String, enum: ADMIN_ROLES, required: true },
   permissions: [{ type: String, required: true }],
-  phone: String, assignedArea: [String], specialization: [String], activeWorkload: { type: Number, default: 0 },
+  phone: String, photoUrl: String, department: String, assignedArea: [String], specialization: [String], activeWorkload: { type: Number, default: 0 },
   isAvailable: { type: Boolean, default: true }, isActive: { type: Boolean, default: true }, lastLoginAt: Date
 };
 export const configureSchema = (schema) => { schema.index({ role: 1, isActive: 1, isAvailable: 1 }); };

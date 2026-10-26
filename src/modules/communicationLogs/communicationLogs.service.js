@@ -35,7 +35,7 @@ const clean = { isDeleted: { $ne: true } };
 const recentPushKeys = new Map();
 
 const hasPermission = (actor, permission) =>
-  actor?.role === "super_admin" || actor?.permissions?.includes(permission);
+  actor?.role === "super_admin" || actor?.permissions?.includes("*") || actor?.permissions?.includes(permission);
 
 const readableEntityTypes = (actor) =>
   Object.entries(entityConfig)

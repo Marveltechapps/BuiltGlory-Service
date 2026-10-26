@@ -4,6 +4,19 @@ export const listValidator = Joi.object({ query: Joi.object({ page: Joi.number()
 export const availabilityValidator = Joi.object({ query: Joi.object({ propertyId: Joi.string().hex().length(24).required(), visitType: Joi.string().valid("physical", "virtual").default("physical"), from: Joi.date().iso(), days: Joi.number().integer().min(1).max(30).default(7) }).unknown(false) }).unknown(true);
 export const createValidator = Joi.object({ body: Joi.object({ propertyId: Joi.string().hex().length(24).required(), enquiryId: Joi.string().hex().length(24), visitDate: Joi.date().iso().required(), visitTime: Joi.string().max(40).required(), visitType: Joi.string().valid("physical", "virtual").required(), preferredLanguage: Joi.string().valid("English", "Tamil", "Hindi", "Kannada").allow(null), language: Joi.string().trim().max(40).allow("", null), virtualPlatform: Joi.string().valid("zoom", "google_meet", "teams", "whatsapp_video", null), meetingLink: Joi.string().uri().allow("", null) }).unknown(false) }).unknown(true);
 export const updateValidator = Joi.object({ body: Joi.object({ visitDate: Joi.date().iso(), visitTime: Joi.string().max(40), reason: Joi.string().max(500).allow("", null), meetingLink: Joi.string().uri().allow("", null), virtualPlatform: Joi.string().valid("zoom", "google_meet", "teams", "whatsapp_video", null), feedback: Joi.object({ buyerInterest: Joi.string().valid("very_interested", "interested", "not_interested", "needs_time").required(), notes: Joi.string().max(2000).required(), nextAction: Joi.string().valid("move_to_negotiation", "schedule_another_visit", "mark_lost", "follow_up").required() }), outcome: Joi.string().max(80), notes: Joi.string().max(2000).allow("", null) }).min(1).unknown(false), params: Joi.object().unknown(true) }).unknown(true);
+export const adminCreateValidator = Joi.object({ body: Joi.object({
+  buyerId: Joi.string().hex().length(24).required(),
+  propertyId: Joi.string().hex().length(24).required(),
+  enquiryId: Joi.string().hex().length(24),
+  visitDate: Joi.date().iso().required(),
+  visitTime: Joi.string().max(40).required(),
+  visitType: Joi.string().valid("physical", "virtual").required(),
+  meetingLink: Joi.string().uri().allow("", null),
+  virtualPlatform: Joi.string().valid("zoom", "google_meet", "teams", "whatsapp_video", null),
+  assignedAdmin: Joi.string().hex().length(24),
+  preferredLanguage: Joi.string().valid("English", "Tamil", "Hindi", "Kannada").allow(null),
+  language: Joi.string().trim().max(40).allow("", null)
+}).unknown(false) }).unknown(true);
 export const statusValidator = Joi.object({ body: Joi.object({
   status: Joi.string().valid("scheduled", "confirmed", "completed", "cancelled", "missed", "rescheduled").required(),
   visitDate: Joi.date().iso(),

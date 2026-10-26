@@ -17,6 +17,8 @@ import { openapi } from "./docs/openapi.js";
 import { metricsSnapshot } from "./services/metrics.service.js";
 export const createApp = () => {
   const app = express();
+  // One hop (Nginx / load balancer). Without this, every client shares the proxy IP bucket.
+  app.set("trust proxy", 1);
   app.use(requestContext);
   app.use(requestLogger);
   app.use(helmet());
@@ -35,8 +37,14 @@ export const createApp = () => {
     if (!loopback) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found." } });
     return res.json(metricsSnapshot());
   });
-  app.get("/openapi.json", (req, res) => res.json(openapi));
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapi));
+  if (env.NODE_ENV === "production") {
+    const hidden = (req, res) => res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found." } });
+    app.get("/openapi.json", hidden);
+    app.use("/api-docs", hidden);
+  } else {
+    app.get("/openapi.json", (req, res) => res.json(openapi));
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapi));
+  }
   app.use("/api/signin", signinRoutes);
   app.use("/api/v1", routes);
   app.use(notFoundHandler);

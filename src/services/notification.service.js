@@ -61,7 +61,8 @@ export const enqueueNotification = async ({
   screen,
   entityId,
   entityType,
-  image
+  image,
+  audience
 }) => {
   if (dedupeKey) {
     const duplicate = await findDuplicateNotification(dedupeKey, channel);
@@ -105,6 +106,7 @@ export const enqueueNotification = async ({
     entityId: entityId || payload?.entityId || undefined,
     entityType: entityType || payload?.entityType || undefined,
     image: image || payload?.image || undefined,
+    audience: audience || payload?.audience,
     marketing,
     preferenceCheckedAt: new Date()
   };

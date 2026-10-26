@@ -216,6 +216,8 @@ describe("operations modules integration", () => {
     const invalidQuote = await request(app).patch(`/api/v1/admin/interior/leads/${lead._id}`).set("Authorization", bearer(admin.token)).send({ status: "quote_sent", quote: { amount: 1000 } });
     expect(invalidQuote.status).toBe(422);
 
+    const contacted = await request(app).patch(`/api/v1/admin/interior/leads/${lead._id}`).set("Authorization", bearer(admin.token)).send({ status: "contacted" });
+    expect(contacted.status).toBe(200);
     const validQuote = await request(app).patch(`/api/v1/admin/interior/leads/${lead._id}`).set("Authorization", bearer(admin.token)).send({ status: "quote_sent", quote: { amount: 1000, packageName: "Basic", timeline: "2 weeks", inclusions: ["design"], validUntil: new Date(Date.now() + 86400000).toISOString() } });
     expect(validQuote.status).toBe(200);
     expect(validQuote.body.data.status).toBe("quote_sent");

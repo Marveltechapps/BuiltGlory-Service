@@ -28,7 +28,9 @@ cp .env.example .env
 npm run dev
 ```
 
-API runs at `http://localhost:5001` by default. Swagger UI is available when the server is running.
+API runs at `http://localhost:5001` by default. Swagger UI is available in development and hidden when `NODE_ENV=production`.
+
+SMS credentials belong in `.env` only. Do not add a `config.json`. Production and staging refuse the default JWT secrets, and a hosted process refuses to start until `NODE_ENV` is set. Use a MongoDB replica set in production so deal close and listing conversion commit atomically; a standalone server still accepts those writes without a transaction. The API process runs the background jobs every 15 minutes.
 
 ## Environment
 

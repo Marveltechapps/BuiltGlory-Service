@@ -15,7 +15,7 @@ const appVisiblePropertyFilter = {
 const MAX_RECENT_SEARCHES = 10;
 
 const hasPermission = (actor, permission) =>
-  actor?.role === "super_admin" || actor?.permissions?.includes(permission);
+  actor?.role === "super_admin" || actor?.permissions?.includes("*") || actor?.permissions?.includes(permission);
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

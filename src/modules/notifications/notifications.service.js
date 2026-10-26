@@ -27,6 +27,12 @@ export const service = {
     if (actor?.type === "admin") {
       const { page, limit, skip } = await import("../../utils/pagination.js").then((m) => m.getPagination(query));
       const filter = mapListFilter(query);
+      const deliveryLog = ["push", "sms", "email", "whatsapp"].includes(query.channel);
+      if (!deliveryLog) {
+        filter.channel = "in_app";
+        filter.userId = null;
+        filter.$or = [{ adminId: actor.id }, { audience: "admin" }];
+      }
       const [data, total] = await Promise.all([
         Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
         Notification.countDocuments(filter)
@@ -49,6 +55,17 @@ export const service = {
     return { count };
   },
   async update(id, data, actor, req) {
+    if (actor?.type === "admin") {
+      const existing = await Notification.findById(id);
+      if (!existing || existing.isDeleted) throw notFound("Notification not found.");
+      const customerInbox = existing.channel === "in_app" && existing.userId;
+      if (customerInbox) throw notFound("Notification not found.");
+      if (existing.channel === "in_app") {
+        const mine = existing.adminId && String(existing.adminId) === String(actor.id);
+        const broadcast = existing.audience === "admin";
+        if (!mine && !broadcast && actor.role !== "super_admin") throw notFound("Notification not found.");
+      }
+    }
     const patch = { ...data };
     if (patch.isRead === true && !patch.readAt) patch.readAt = new Date();
     if (patch.isRead === false) patch.readAt = null;

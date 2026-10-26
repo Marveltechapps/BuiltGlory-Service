@@ -65,20 +65,24 @@ export const controller = {
     res.json({ data, meta: { requestId: res.locals.requestId } });
   }),
   updateAdminSalesDealsPaymentPlan: asyncHandler(async (req, res) => {
+    const { SalesDeal } = await import("./salesDeals.model.js");
+    const deal = await SalesDeal.findById(req.params.dealId);
     const patch = { $set: { lastActivityAt: new Date() } };
     if (req.body.paymentType !== undefined) patch.$set["financials.paymentType"] = req.body.paymentType;
-    if (req.body.totalPaid !== undefined) patch.$set["financials.totalPaid"] = req.body.totalPaid;
     if (req.body.fullPayment !== undefined) patch.$set["financials.fullPayment"] = req.body.fullPayment;
     if (req.body.stagePayment !== undefined) patch.$set["financials.stagePayment"] = req.body.stagePayment;
     if (req.body.interiorDesign !== undefined) patch.$set["financials.interiorDesign"] = req.body.interiorDesign;
+    const financials = deal?.financials || {};
+    const tokenPaid = req.body.tokenPaid ?? financials.tokenPaid;
+    const tokenAmount = Number(req.body.tokenAmount ?? financials.tokenAmount ?? 0);
     const milestones = req.body.stagePayment?.milestones;
     if (Array.isArray(milestones) && milestones.length) {
-      const { SalesDeal } = await import("./salesDeals.model.js");
-      const deal = await SalesDeal.findById(req.params.dealId);
-      const tokenPaid = req.body.tokenPaid ?? deal?.financials?.tokenPaid;
-      const tokenAmount = Number(req.body.tokenAmount ?? deal?.financials?.tokenAmount ?? 0);
       const milestonePaid = milestones.filter((item) => item?.status === "paid").reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
       patch.$set["financials.totalPaid"] = (tokenPaid ? tokenAmount : 0) + milestonePaid;
+    } else if (Number(req.body.fullPayment?.payment?.amount) > 0) {
+      patch.$set["financials.totalPaid"] = (tokenPaid ? tokenAmount : 0) + Number(req.body.fullPayment.payment.amount);
+    } else if (req.body.totalPaid !== undefined) {
+      patch.$set["financials.totalPaid"] = Number(req.body.totalPaid);
     }
     const data = await service.update(req.params.dealId, patch, req.actor, req);
     res.json({ data, meta: { requestId: res.locals.requestId } });

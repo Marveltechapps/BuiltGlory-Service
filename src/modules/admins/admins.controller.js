@@ -11,7 +11,7 @@ import { badRequest, notFound, conflict } from "./admins.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 import { ROLE_PERMISSIONS, PERMISSIONS } from "../../constants/permissions.js";
 import { makeReferenceId } from "../../utils/id.js";
-import { sanitizeAdmin, compact, SALES_ROLES, issueTemporaryPassword, ensureSalesRole, templateVariables, ensureDefaultTemplates, isObjectIdLike, recipientsForAudience } from "./admins.helpers.js";
+import { sanitizeAdmin, compact, SALES_ROLES, ensureSalesRole, templateVariables, ensureDefaultTemplates, isObjectIdLike, recipientsForAudience } from "./admins.helpers.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 export const controller = {
   ...createController(service),
@@ -19,8 +19,9 @@ export const controller = {
     const data = await Admin.find({ role: { $in: ["sales_manager", "sales_executive", "relationship_manager"] }, isActive: true }); res.json({ data, meta: { requestId: res.locals.requestId } });
   }),
   createAdminSalesTeam: asyncHandler(async (req, res) => {
-    const { name, email, phone, role = "sales_executive", assignedArea = [], isAvailable = true } = req.body || {};
-    if (!name || !email) throw badRequest("name and email are required.");
+    const { name, email, phone, password, role = "sales_executive", assignedArea = [], isAvailable = true } = req.body || {};
+    if (!name || !email || !password) throw badRequest("name, email and password are required.");
+    if (String(password).length < 8) throw badRequest("Password must be at least 8 characters.");
     const existing = await Admin.findOne({ email: String(email).toLowerCase() });
     if (existing) throw conflict("Admin email already exists.");
     const salesRole = ensureSalesRole(role);
@@ -32,7 +33,7 @@ export const controller = {
       assignedArea,
       isAvailable,
       permissions: ROLE_PERMISSIONS[salesRole] || [],
-      passwordHash: await bcrypt.hash(issueTemporaryPassword(), 10),
+      passwordHash: await bcrypt.hash(String(password), 10),
       isActive: true
     });
     await writeAuditLog({ actor: req.actor, action: "sales_team.created", resourceType: "admin", resourceId: admin._id, before: null, after: sanitizeAdmin(admin), req });
@@ -63,12 +64,16 @@ export const controller = {
     if (role) filter.role = role;
     if (status === "active") filter.isActive = true;
     if (status === "suspended") filter.isActive = false;
-    if (search) filter.$or = [{ name: new RegExp(String(search), "i") }, { email: new RegExp(String(search), "i") }];
+    if (search) {
+      const escaped = String(search).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(escaped, "i");
+      filter.$or = [{ name: pattern }, { email: pattern }];
+    }
     const data = await Admin.find(filter).sort({ createdAt: -1 });
     res.json({ data: data.map(sanitizeAdmin), meta: { requestId: res.locals.requestId } });
   }),
   createAdminAdminsInvite: asyncHandler(async (req, res) => {
-    const { name, email, role = "admin", phone, assignedArea = [], specialization = [], permissions } = req.body || {};
+    const { name, email, role = "admin", phone, photoUrl, department, assignedArea = [], specialization = [], permissions } = req.body || {};
     if (!name || !email) throw badRequest("name and email are required.");
     const existing = await Admin.findOne({ email: String(email).toLowerCase() });
     if (existing) throw conflict("Admin email already exists.");
@@ -78,6 +83,8 @@ export const controller = {
       email,
       role,
       phone,
+      photoUrl,
+      department,
       assignedArea,
       specialization,
       permissions: Array.isArray(permissions) && permissions.length ? permissions.filter((p) => PERMISSIONS.includes(p)) : ROLE_PERMISSIONS[role] || [],
@@ -90,7 +97,7 @@ export const controller = {
   updateAdminAdminsById: asyncHandler(async (req, res) => {
     const before = await Admin.findById(req.params.id);
     if (!before) throw notFound("Admin not found.");
-    const allowed = compact((({ name, email, role, phone, assignedArea, specialization, isAvailable, isActive, status }) => ({ name, email, role, phone, assignedArea, specialization, isAvailable, isActive: isActive ?? (status === "active" ? true : status === "suspended" ? false : undefined) }))(req.body || {}));
+    const allowed = compact((({ name, email, role, phone, photoUrl, department, assignedArea, specialization, isAvailable, isActive, status }) => ({ name, email, role, phone, photoUrl, department, assignedArea, specialization, isAvailable, isActive: isActive ?? (status === "active" ? true : status === "suspended" ? false : undefined) }))(req.body || {}));
     if (allowed.role && !allowed.permissions) allowed.permissions = ROLE_PERMISSIONS[allowed.role] || before.permissions;
     const admin = await Admin.findByIdAndUpdate(req.params.id, { $set: allowed }, { new: true, runValidators: true });
     await writeAuditLog({ actor: req.actor, action: "admin.updated", resourceType: "admin", resourceId: admin._id, before: sanitizeAdmin(before), after: sanitizeAdmin(admin), req });

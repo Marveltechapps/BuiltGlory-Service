@@ -1,10 +1,18 @@
+// `$` keys are Mongo operators. Dots are path syntax, so they are rewritten to a
+// fullwidth dot instead of being dropped — custom document names like "Sale.Deed" survive.
+const safeKey = (key) => {
+  if (key.startsWith("$")) return null;
+  return key.includes(".") ? key.replaceAll(".", "\uFF0E") : key;
+};
+
 const sanitizeValue = (value) => {
   if (!value || typeof value !== "object") return value;
   if (Buffer.isBuffer(value) || ArrayBuffer.isView(value)) return value;
   if (Array.isArray(value)) return value.map(sanitizeValue);
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !key.startsWith("$") && !key.includes("."))
+      .map(([key, nested]) => [safeKey(key), nested])
+      .filter(([key]) => key)
       .map(([key, nested]) => [key, sanitizeValue(nested)])
   );
 };

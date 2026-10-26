@@ -174,7 +174,8 @@ describe("business logic", () => {
     expect(() => assertTransition("paymentStatus", "paid", "refunded")).not.toThrow();
     expect(() => assertTransition("paymentStatus", "refunded", "paid")).toThrow("Invalid state transition");
     expect(() => assertTransition("visitStatus", "completed", "scheduled")).toThrow("Invalid state transition");
-    expect(() => assertTransition("propertyStatus", "sold", "available")).toThrow("Invalid state transition");
+    expect(() => assertTransition("propertyStatus", "sold", "available")).not.toThrow();
+    expect(() => assertTransition("propertyStatus", "sold", "draft")).toThrow("Invalid state transition");
   });
 
   test("super-admin approval is role gated", () => {

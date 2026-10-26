@@ -48,6 +48,16 @@ function errorPayload(error) {
   return { ok: false, error: error?.message || "Realtime chat request failed." };
 }
 
+const actorCan = (actor, ...permissions) => {
+  if (actor?.type !== "admin") return true;
+  if (actor.role === "super_admin" || actor.permissions?.includes("*")) return true;
+  return permissions.some((permission) => actor.permissions?.includes(permission));
+};
+
+const assertStaff = (actor, permissions, message) => {
+  if (actor?.type === "admin" && !actorCan(actor, ...permissions)) throw new Error(message);
+};
+
 function trackJoin(roomId, socket) {
   if (!roomViewers.has(roomId)) roomViewers.set(roomId, new Map());
   roomViewers.get(roomId).set(socket.id, { type: socket.actor.type, id: String(socket.actor.id) });
@@ -129,11 +139,12 @@ export function initChatSocket(httpServer) {
   });
 
   chat.on("connection", (socket) => {
-    if (socket.actor.type === "admin") socket.join(adminInbox);
+    if (socket.actor.type === "admin" && actorCan(socket.actor, "support.read", "support.write")) socket.join(adminInbox);
     if (socket.actor.type === "customer") socket.join(customerRoom(socket.actor.id));
 
     socket.on("support:join", async ({ ticketId } = {}, ack) => {
       try {
+        assertStaff(socket.actor, ["support.read", "support.write"], "You do not have permission to view support chats.");
         const ticket = await supportTicketService.get(ticketId, socket.actor);
         const roomId = supportRoom(ticket._id);
         socket.join(roomId);
@@ -161,6 +172,7 @@ export function initChatSocket(httpServer) {
 
     socket.on("support:send", async ({ ticketId, message, clientMessageId } = {}, ack) => {
       try {
+        assertStaff(socket.actor, ["support.write"], "You do not have permission to reply to support chats.");
         const roomId = supportRoom(ticketId);
         const recipientType = socket.actor.type === "admin" ? "customer" : "admin";
         const recipientViewing = roomHasViewerType(roomId, recipientType);
@@ -189,6 +201,7 @@ export function initChatSocket(httpServer) {
 
     socket.on("support:read", async ({ ticketId } = {}, ack) => {
       try {
+        assertStaff(socket.actor, ["support.read", "support.write"], "You do not have permission to view support chats.");
         const ticket = await supportTicketService.markRead(ticketId, socket.actor);
         publishSupportTicket(ticket);
         chat.to(supportRoom(ticket._id)).emit("support:message:read", {
@@ -205,6 +218,7 @@ export function initChatSocket(httpServer) {
 
     socket.on("sell:join", async ({ sellRequestId } = {}, ack) => {
       try {
+        assertStaff(socket.actor, ["sellRequests.read", "acquisitions.read"], "You do not have permission to view seller chats.");
         const activity = await sellRequestService.sellerActivity(sellRequestId, socket.actor);
         socket.join(sellRoom(String(activity.sellRequest?._id ?? sellRequestId)));
         emitAck(ack, { ok: true, activity });
@@ -215,6 +229,7 @@ export function initChatSocket(httpServer) {
 
     socket.on("sell:send", async ({ sellRequestId, text } = {}, ack) => {
       try {
+        assertStaff(socket.actor, ["sellRequests.write"], "You do not have permission to message sellers.");
         const activity = await sellRequestService.sellerMessage(sellRequestId, { text }, socket.actor);
         const roomId = String(activity.sellRequest?._id ?? sellRequestId);
         socket.join(sellRoom(roomId));

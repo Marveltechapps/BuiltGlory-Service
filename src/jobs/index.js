@@ -7,6 +7,8 @@ import { Document } from "../modules/documents/documents.model.js";
 import { Notification } from "../modules/notifications/notifications.model.js";
 import { processNotificationQueue, enqueueInAppAndPush } from "../services/notification.service.js";
 import { withJobLock } from "../services/jobLock.service.js";
+import { logger } from "../config/logger.js";
+import cron from "node-cron";
 
 const enqueueDualChannelOnce = async ({ key, ...notification }) => {
   const existing = await Notification.findOne({ event: notification.event, "payload.idempotencyKey": key, status: { $ne: "cancelled" } });
@@ -118,4 +120,22 @@ export const runAllJobs = async () => {
   await withJobLock("notification-retry", () => processNotificationQueue());
   await retryDocumentScans();
   await calculateStageAging();
+};
+
+let scheduledTask;
+
+/** Runs the background queue every 15 minutes inside the API process. Skipped in tests. */
+export const scheduleJobs = () => {
+  if (scheduledTask || process.env.NODE_ENV === "test") return scheduledTask;
+  scheduledTask = cron.schedule("*/15 * * * *", () => {
+    runAllJobs().catch((error) => {
+      logger.error({ message: "Scheduled jobs failed", error: error.message, stack: error.stack });
+    });
+  });
+  return scheduledTask;
+};
+
+export const stopScheduledJobs = () => {
+  scheduledTask?.stop();
+  scheduledTask = undefined;
 };

@@ -6,6 +6,7 @@ import { logger } from "./config/logger.js";
 import { closeRedis } from "./config/redis.js";
 import { closeChatSocket, initChatSocket } from "./realtime/chatSocket.js";
 import { listenWithPortFallback } from "./utils/findAvailablePort.js";
+import { scheduleJobs, stopScheduledJobs } from "./jobs/index.js";
 
 const PREFERRED_PORT = Number(process.env.PORT) || 5001;
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -49,6 +50,7 @@ async function shutdown(signal, { exitProcess = true } = {}) {
   forceExit.unref?.();
 
   try {
+    stopScheduledJobs();
     await closeChatSocket();
     if (server) await closeHttpServer(server);
     await disconnectDatabase();
@@ -99,7 +101,7 @@ async function bootstrap() {
   server = http.createServer(app);
   initChatSocket(server);
 
-  const bound = await listenWithPortFallback(server, PREFERRED_PORT);
+  const bound = await listenWithPortFallback(server, PREFERRED_PORT, { allowFallback: env.NODE_ENV !== "production" });
   activePort = bound.port;
 
   if (bound.fellBack) {
@@ -117,9 +119,9 @@ async function bootstrap() {
   logger.info({
     message: "SMS delivery configuration",
     mode: env.SMS_DELIVERY_MODE,
-    vendorConfigured: Boolean(String(env.SMS_VENDOR_URL || env.SMS_PROVIDER_URL || "").trim()),
-    vendorFallback: "config.json smsvendor when SMS_VENDOR_URL is unset"
+    vendorConfigured: Boolean(String(env.SMS_VENDOR_URL || env.SMS_PROVIDER_URL || "").trim())
   });
+  if (env.NODE_ENV !== "test") scheduleJobs();
   if (env.SMS_DELIVERY_MODE === "vendor") {
     logger.warn({
       message:

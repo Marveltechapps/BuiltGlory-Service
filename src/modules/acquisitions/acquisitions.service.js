@@ -142,19 +142,24 @@ export const service = {
     const payout = mergeSection(before, extra, "payout");
     const builtgloryOffer = positiveNumber(extra.builtgloryOffer || valuation.amount || valuation.builtgloryValuation || before.builtgloryOffer);
     const agreedPrice = positiveNumber(extra.agreedPrice || negotiation.agreedPrice || before.agreedPrice);
-    if (to === "negotiation" && before.stage !== "on_hold" && !builtgloryOffer) {
+    if (before.stage === "on_hold" && to !== "rejected") {
+      const heldStage = [...(before.stageHistory || [])].reverse().find((entry) => entry?.to === "on_hold" && entry.from && entry.from !== "on_hold")?.from;
+      if (!heldStage) throw domainError("This deal cannot be resumed because the stage it was held from is unknown.");
+      if (to !== heldStage) throw domainError(`Resume can only return to ${heldStage}.`);
+    }
+    if (to === "negotiation" && !builtgloryOffer) {
       throw domainError("Valuation amount is required before negotiation.");
     }
-    if (to === "token_to_seller" && before.stage !== "on_hold" && !agreedPrice) {
+    if (to === "token_to_seller" && !agreedPrice) {
       throw domainError("Agreed price is required before seller token.");
     }
-    if (to === "documentation" && before.stage !== "on_hold" && !(token.paid || extra.token?.paid)) {
+    if (to === "documentation" && !(token.paid || extra.token?.paid)) {
       throw domainError("Seller token payment must be recorded before documentation.");
     }
-    if (to === "seller_payout" && before.stage !== "on_hold") {
+    if (to === "seller_payout") {
       assertLegalVerification({ documentation: { ...(before.documentation || {}), ...documentation }, action: "seller payout" });
     }
-    if (to === "acquired" && before.stage !== "on_hold" && !(payout.completed || extra.payout?.completed)) {
+    if (to === "acquired" && !(payout.completed || extra.payout?.completed)) {
       throw domainError("Completed payout is required before marking acquired.");
     }
     if (to === "rejected" && !requiredText(extra.rejectionReason || extra.reason)) throw domainError("Rejection reason is required.");
