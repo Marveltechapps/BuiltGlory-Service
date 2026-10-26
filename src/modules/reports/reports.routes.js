@@ -6,7 +6,7 @@ import { analyticsValidator, summaryValidator, exportValidator, exportListValida
 
 const router = Router();
 
-router.get("/public/admin-login-stats", controller.loginStats);
+router.get("/public/admin-login-stats", authenticate("admin"), requireAnyPermission(["sales.read", "acquisitions.read", "support.read", "users.read", "visits.read", "audit.read", "properties.read"]), controller.loginStats);
 router.get(
   "/admin/overview",
   authenticate("admin"),

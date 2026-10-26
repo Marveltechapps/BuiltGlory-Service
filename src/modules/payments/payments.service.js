@@ -1,28 +1,16 @@
-import { createService, notifyLifecycle } from "../../services/service.factory.js";
+import { createService } from "../../services/service.factory.js";
 import { repository } from "./payments.repository.js";
-import { verifyWebhookSignature } from "../../services/payment.service.js";
-import mongoose from "mongoose";
-import { env } from "../../config/env.js";
 import { SalesDeal } from "../salesDeals/salesDeals.model.js";
 import { Property } from "../properties/properties.model.js";
 import { Document } from "../documents/documents.model.js";
 import { service as adminSettingsService } from "../adminSettings/adminSettings.service.js";
-import { conflict, domainError, unauthorized } from "./payments.error.js";
+import { domainError, unauthorized } from "./payments.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 
 const baseService = createService({ collection: "payments", repository, workflowField: "status", workflowMap: "paymentStatus", ownerField: "userId" });
 const confirmableStatuses = new Set(["created", "pending"]);
 const manualMethods = new Set(["bank", "upi", "cheque", "cash"]);
 const dealMethodMap = { bank: "neft", upi: "upi", cheque: "cheque", cash: "cash", neft: "neft" };
-
-const amountMatches = (webhookAmount, storedAmount) => {
-  const rupees = Number(storedAmount);
-  const paise = Math.round(rupees * 100);
-  return Number(webhookAmount) === rupees || Number(webhookAmount) === paise;
-};
-
-const isManualPayment = (payment) =>
-  payment?.gateway === "escrow" || manualMethods.has(payment?.method);
 
 const snapshotTokenPayment = (payment, extra = {}) => ({
   amount: payment.amount,
@@ -99,6 +87,7 @@ export const service = {
     const deal = data.dealId ? await SalesDeal.findById(data.dealId) : null;
     if (deal && String(deal.buyerId) !== String(actor?.id)) throw domainError("Payment deal does not belong to the customer.");
     const type = data.type || "token";
+    if (data.method && !manualMethods.has(data.method)) throw domainError("Choose bank, UPI, cheque, or cash.");
     const method = manualMethods.has(data.method) ? data.method : "bank";
     const openPayment = await repository.findOne({ dealId: data.dealId, userId: actor?.id, type, status: { $in: ["created", "pending"] } });
     if (openPayment) return openPayment;
@@ -214,47 +203,5 @@ export const service = {
       req
     });
     return payment;
-  },
-  async handleWebhook({ rawBody, signature, req }) {
-    if (!verifyWebhookSignature(rawBody, signature)) throw unauthorized("Invalid payment webhook signature.");
-    const payload = JSON.parse(Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : rawBody);
-    const providerEventId = payload.event_id || payload.id;
-    const providerEventAt = payload.created_at ? new Date(Number(payload.created_at) * 1000) : new Date();
-    if (!providerEventId) throw unauthorized("Payment webhook event id is required.");
-    if (Math.abs(Date.now() - providerEventAt.getTime()) > Number(env.WEBHOOK_TOLERANCE_SECONDS) * 1000) throw unauthorized("Payment webhook timestamp is outside the allowed window.");
-    const existingEvent = await repository.findOne({ providerEventId });
-    if (existingEvent) throw conflict("Duplicate payment webhook event.");
-    const entity = payload.payload?.payment?.entity || payload.payment || payload;
-    const orderId = entity.order_id || entity.gatewayOrderId;
-    const payment = await repository.findOne({ gatewayOrderId: orderId });
-    if (!payment) throw domainError("Payment order not found.");
-    if (isManualPayment(payment)) throw domainError("Manual payments cannot be confirmed by webhook.");
-    if (payment.gatewayPaymentId && payment.gatewayPaymentId === entity.id) return payment;
-    const status = entity.status === "captured" || payload.event === "payment.captured" ? "paid" : entity.status === "failed" ? "failed" : "pending";
-    if (!amountMatches(entity.amount || payment.amount, payment.amount)) throw domainError("Webhook amount does not match payment order.");
-    if ((entity.currency || payment.currency) !== payment.currency) throw domainError("Webhook currency does not match payment order.");
-    const patch = { status, gatewayPaymentId: entity.id, gatewaySignature: signature, providerEventId, providerEventAt, providerResponse: payload };
-    if (status === "paid") patch.paidAt = new Date();
-    if (status === "failed") patch.failureReason = entity.error_description || entity.error_reason;
-    const session = await mongoose.startSession();
-    try {
-      let updated;
-      await session.withTransaction(async () => {
-        updated = await repository.update(payment._id, patch, { session });
-        if (status === "paid" && payment.dealId) {
-          const dealPatch = { $inc: { "financials.totalPaid": payment.amount } };
-          if (payment.type === "token") dealPatch.$set = { "financials.tokenPaid": true };
-          await SalesDeal.findByIdAndUpdate(payment.dealId, dealPatch, { session });
-          if (payment.type === "token") await Property.findByIdAndUpdate(payment.propertyId, { status: "reserved" }, { session });
-        }
-        await writeAuditLog({ actor: { type: "system" }, action: "payment.status_changed", resourceType: "payment", resourceId: payment._id, before: payment.toObject(), after: updated.toObject(), req }, { session });
-      });
-      if (updated && (status === "paid" || status === "failed")) {
-        await notifyLifecycle({ collection: "payments", action: "transition", doc: updated, to: status });
-      }
-      return updated;
-    } finally {
-      await session.endSession();
-    }
   }
 };

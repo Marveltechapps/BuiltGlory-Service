@@ -64,7 +64,7 @@ const formatDay = (date) =>
 
 const hoursElapsed = (from, now = Date.now()) => (now - new Date(from || now).getTime()) / 3600000;
 
-const slaItem = ({ id, name, property, phone, viewPath, sourceTime, limitHours }) => {
+const slaItem = ({ id, name, property, phone, email, viewPath, sourceTime, limitHours }) => {
   const elapsedHours = hoursElapsed(sourceTime);
   const remainingHours = limitHours - elapsedHours;
   return {
@@ -72,6 +72,7 @@ const slaItem = ({ id, name, property, phone, viewPath, sourceTime, limitHours }
     name,
     property,
     phone,
+    email,
     viewPath,
     sourceTime: toIso(sourceTime),
     limitHours,
@@ -388,7 +389,7 @@ export const service = {
       BuyEnquiry.find(clean).sort({ submittedAt: -1, createdAt: -1 }).limit(5),
       SellRequest.find({ ...clean, status: { $in: ["new", "under_review", "changes_requested"] } }).sort({ submittedAt: -1, createdAt: -1 }).limit(5),
       SalesDeal.find({ ...clean, stage: "stage_payment" }).sort({ lastActivityAt: 1, createdAt: 1 }).limit(10),
-      InteriorLead.find({ ...clean, status: { $in: ["new", "contacted"] } }).sort({ slaDeadline: 1, createdAt: 1 }).limit(10),
+      InteriorLead.find({ ...clean, status: { $in: ["new", "contacted"] } }).populate("buyerId", "name phone email").populate("propertyId", "title").sort({ slaDeadline: 1, createdAt: 1 }).limit(10),
       AuditLog.find({}).sort({ createdAt: -1 }).limit(8)
     ]);
     const enquiryMap = new Map(enquiriesByDay.map((item) => [item.date, item.count]));
@@ -426,6 +427,7 @@ export const service = {
           name: item.buyerSnapshot?.name || "Buyer",
           property: item.propertySnapshot?.title || "Property",
           phone: item.buyerSnapshot?.phone,
+          email: item.buyerSnapshot?.email,
           viewPath: `/admin/enquiries/buy/${asId(item)}`,
           sourceTime: item.submittedAt || item.createdAt,
           limitHours: overviewSlaLimits.enquiry
@@ -438,14 +440,20 @@ export const service = {
         sourceTime: item.lastActivityAt || item.createdAt,
         limitHours: overviewSlaLimits.stagePayment
       })),
-      interiorLeads: interiorLeads.map((item) => slaItem({
-        id: asId(item),
-        name: item.buyerSnapshot?.name || "Interior lead",
-        property: item.propertySnapshot?.title || "Interior project",
-        viewPath: `/admin/enquiries/interior/${asId(item)}`,
-        sourceTime: item.createdAt,
-        limitHours: overviewSlaLimits.interior
-      }))
+      interiorLeads: interiorLeads.map((item) => {
+        const buyer = item.buyerId && typeof item.buyerId === "object" ? item.buyerId : {};
+        const property = item.propertyId && typeof item.propertyId === "object" ? item.propertyId : {};
+        return slaItem({
+          id: asId(item),
+          name: buyer.name || "Interior lead",
+          property: property.title || "Interior project",
+          phone: buyer.phone,
+          email: buyer.email,
+          viewPath: `/admin/enquiries/interior/${asId(item)}`,
+          sourceTime: item.createdAt,
+          limitHours: overviewSlaLimits.interior
+        });
+      })
     };
     return {
       kpis: { activeProperties, featuredProperties, upcomingProperties, newEnquiries, tokenPaidDeals, closedDeals, revenue: revenue[0]?.total || 0, overdueCallbacks, openSupportTickets, pendingKycUsers, pendingSellRequests },

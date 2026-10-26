@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { controller } from "./visits.controller.js";
 import { validate } from "../../middleware/validate.js";
-import { authenticate, requirePermission } from "../../middleware/auth.js";
+import { authenticate, requireAnyPermission } from "../../middleware/auth.js";
 import { listValidator, availabilityValidator, createValidator, updateValidator, statusValidator } from "./visits.validation.js";
 const router = Router();
 router.get("/me/visits", authenticate("customer"), validate(listValidator), controller.getMeVisits);
@@ -9,9 +9,9 @@ router.get("/visits/availability", authenticate("customer"), validate(availabili
 router.post("/visits", authenticate("customer"), validate(createValidator), controller.create);
 router.patch("/visits/:visitId/reschedule", authenticate("customer"), validate(updateValidator), controller.updateVisitsReschedule);
 router.patch("/visits/:visitId/cancel", authenticate("customer"), validate(updateValidator), controller.updateVisitsCancel);
-router.get("/admin/visits", authenticate("admin"), requirePermission("enquiries.read"), validate(listValidator), controller.list);
-router.get("/admin/visits/:visitId", authenticate("admin"), requirePermission("enquiries.read"), controller.get);
-router.patch("/admin/visits/:visitId/status", authenticate("admin"), requirePermission("enquiries.write"), validate(statusValidator), controller.transition("status"));
-router.post("/admin/visits/:visitId/feedback", authenticate("admin"), requirePermission("enquiries.write"), validate(updateValidator), controller.update);
-router.post("/admin/visits/:visitId/call-logs", authenticate("admin"), requirePermission("enquiries.write"), validate(updateValidator), controller.update);
+router.get("/admin/visits", authenticate("admin"), requireAnyPermission(["visits.read", "enquiries.read"]), validate(listValidator), controller.list);
+router.get("/admin/visits/:visitId", authenticate("admin"), requireAnyPermission(["visits.read", "enquiries.read"]), controller.get);
+router.patch("/admin/visits/:visitId/status", authenticate("admin"), requireAnyPermission(["visits.write", "enquiries.write"]), validate(statusValidator), controller.transition("status"));
+router.post("/admin/visits/:visitId/feedback", authenticate("admin"), requireAnyPermission(["visits.write", "enquiries.write"]), validate(updateValidator), controller.update);
+router.post("/admin/visits/:visitId/call-logs", authenticate("admin"), requireAnyPermission(["visits.write", "enquiries.write"]), validate(updateValidator), controller.update);
 export default router;

@@ -26,7 +26,7 @@ const schema = Joi.object({
   AWS_SECRET_ACCESS_KEY: Joi.string().allow("").default(""),
   RAZORPAY_KEY_ID: Joi.string().allow("").default(""),
   RAZORPAY_KEY_SECRET: Joi.string().allow("").default(""),
-  RAZORPAY_WEBHOOK_SECRET: Joi.string().when("NODE_ENV", { is: "production", then: Joi.string().min(16).required(), otherwise: Joi.string().allow("").default("") }),
+  RAZORPAY_WEBHOOK_SECRET: Joi.string().allow("").default(""),
   MALWARE_SCANNER_MODE: Joi.string().valid("disabled", "clamav", "provider").default("disabled"),
   QUARANTINE_S3_BUCKET: Joi.string().allow("").default(""),
   SMS_PROVIDER_URL: Joi.string().allow("").default(""),

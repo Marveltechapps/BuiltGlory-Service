@@ -6,22 +6,38 @@ import { badRequest, forbidden, notFound } from "./properties.error.js";
 import { PropertyImportJob } from "./properties.importJob.model.js";
 import { Property } from "./properties.model.js";
 import { bulkTemplateFields, FEATURED_LIMIT, importJobQuery, importJobPopulate, parseBulkRows, validateBulkRows, mapBulkRowToProperty, propertyToTemplateRow, mapPropertyQuery } from "./properties.bulkImport.js";
+
+const PUBLIC_STATUSES = ["available", "reserved", "under_construction"];
+const publicPropertySelect = "-savedByUsers -assignedTo -sourceSheet -acquisitionId -deletedBy";
+const toPublicProperty = (doc) => {
+  if (!doc) return doc;
+  const plain = typeof doc.toObject === "function" ? doc.toObject() : { ...doc };
+  delete plain.savedByUsers;
+  delete plain.assignedTo;
+  delete plain.sourceSheet;
+  delete plain.acquisitionId;
+  delete plain.deletedBy;
+  return plain;
+};
+
 export const controller = {
   ...createController(service, { idParam: "propertyId" }),
   getProperties: asyncHandler(async (req, res) => {
     const recentlySold = req.query.recentlySold === true || req.query.recentlySold === "true";
-    // Express 5 re-parses req.query on every read, so assignments on it are discarded.
     const query = {
       ...req.query,
-      status: recentlySold ? "sold" : (req.query.status || ["available", "reserved", "under_construction"]),
-      isVisibleOnApp: true
+      status: recentlySold ? "sold" : PUBLIC_STATUSES,
+      isVisibleOnApp: true,
+      includeDeleted: false,
+      deletedOnly: false
     };
+    delete query.assignedTo;
     const result = await service.list(mapPropertyQuery(query), req.actor);
-    res.json({ data: result.data, meta: { ...result.meta, requestId: res.locals.requestId } });
+    res.json({ data: (result.data || []).map(toPublicProperty), meta: { ...result.meta, requestId: res.locals.requestId } });
   }),
   getPropertiesById: asyncHandler(async (req, res) => {
     const { Property } = await import("./properties.model.js");
-    const data = await Property.findOne({ _id: req.params.propertyId, status: { $in: ["available", "reserved", "under_construction"] }, isVisibleOnApp: { $ne: false }, isDeleted: { $ne: true } });
+    const data = await Property.findOne({ _id: req.params.propertyId, status: { $in: PUBLIC_STATUSES }, isVisibleOnApp: { $ne: false }, isDeleted: { $ne: true } }).select(publicPropertySelect);
     if (!data) throw notFound("Property not found.");
     res.json({ data, meta: { requestId: res.locals.requestId } });
   }),
@@ -35,7 +51,7 @@ export const controller = {
       property.metrics.savedCount += 1;
       await property.save();
     }
-    res.json({ data: property, meta: { requestId: res.locals.requestId } });
+    res.json({ data: toPublicProperty(property), meta: { requestId: res.locals.requestId } });
   }),
   removePropertiesSave: asyncHandler(async (req, res) => {
     const { Property } = await import("./properties.model.js");
@@ -47,7 +63,7 @@ export const controller = {
     }
     res.status(204).send();
   }),
-  getMeFavorites: asyncHandler(async (req, res) => { const { Property } = await import("./properties.model.js"); const data = await Property.find({ savedByUsers: req.actor.id, status: { $in: ["available", "reserved", "under_construction"] }, isDeleted: { $ne: true } }); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
+  getMeFavorites: asyncHandler(async (req, res) => { const { Property } = await import("./properties.model.js"); const data = await Property.find({ savedByUsers: req.actor.id, status: { $in: PUBLIC_STATUSES }, isDeleted: { $ne: true } }).select(publicPropertySelect); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
   getAdminProperties: asyncHandler(async (req, res) => { const result = await service.list(mapPropertyQuery(req.query), req.actor); res.json({ data: result.data, meta: { ...result.meta, requestId: res.locals.requestId } }); }),
   getAdminPropertiesImportJobs: asyncHandler(async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 10, 50);

@@ -2,7 +2,7 @@ import { createService } from "../../services/service.factory.js";
 import { repository } from "./documents.repository.js";
 import { makeReferenceId } from "../../utils/id.js";
 import { createReadUrl, createUploadUrl, scanBuffer, uploadBuffer, validateUpload } from "../../services/storage.service.js";
-import { badRequest, domainError } from "./documents.error.js";
+import { badRequest, domainError, forbidden } from "./documents.error.js";
 import { SellRequest } from "../sellRequests/sellRequests.model.js";
 import { SupportTicket } from "../supportTickets/supportTickets.model.js";
 import { SalesDeal } from "../salesDeals/salesDeals.model.js";
@@ -12,9 +12,24 @@ const baseService = createService({ collection: "documents", repository, workflo
 
 const PUBLIC_PURPOSES = new Set(["property_media", "profile_photo"]);
 const storageKeyFor = ({ purpose, ownerType, ownerId, fileName }) => `${purpose}/${ownerType}/${ownerId}/${Date.now()}-${String(fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+const staffHas = (actor, permissions) =>
+  actor?.role === "super_admin" ||
+  actor?.permissions?.includes("*") ||
+  permissions.some((permission) => actor?.permissions?.includes(permission));
+const STAFF_UPLOAD = ["properties.write", "support.write", "users.write", "users.kyc.review", "sales.write", "acquisitions.write"];
+const readPermissionsFor = (doc) => {
+  if (doc?.purpose === "kyc" || ["pan", "aadhaar", "passport"].includes(doc?.documentType)) return ["users.kyc.review"];
+  if (doc?.purpose === "payment_proof") return ["sales.read", "sales.write"];
+  if (doc?.purpose === "property_media") return ["properties.read", "properties.write"];
+  if (doc?.purpose === "profile_photo") return ["users.read", "users.write"];
+  return ["support.read", "properties.read", "users.read", "sales.read", "acquisitions.read"];
+};
 const assertUploadOwner = async (payload, actor) => {
-  if (actor?.type !== "customer") return;
-  if (payload.ownerType === "user" && String(payload.ownerId) === String(actor.id)) return;
+  if (actor?.type === "admin") {
+    if (!staffHas(actor, STAFF_UPLOAD)) throw forbidden("You cannot upload documents for this resource.");
+    return;
+  }
+  if (payload.ownerType === "user" && String(payload.ownerId) === String(actor?.id)) return;
   if (payload.ownerType === "sell_request") {
     const sellRequest = await SellRequest.findOne({ _id: payload.ownerId, sellerId: actor.id, isDeleted: { $ne: true } });
     if (sellRequest) return;
@@ -37,6 +52,14 @@ const assertUploadOwner = async (payload, actor) => {
     if (payment) return;
   }
   throw domainError("You cannot upload documents for this resource.");
+};
+
+const assertCanRead = async (doc, actor) => {
+  if (actor?.type === "customer") {
+    await assertUploadOwner({ ownerType: doc.ownerType, ownerId: doc.ownerId }, actor);
+    return;
+  }
+  if (!staffHas(actor, readPermissionsFor(doc))) throw forbidden("You cannot read this document.");
 };
 
 export const service = {
@@ -83,7 +106,7 @@ export const service = {
   },
   async createSecureReadUrl(id, actor, { expiresIn = 900 } = {}) {
     const doc = await repository.findById(id);
-    await assertUploadOwner({ ownerType: doc.ownerType, ownerId: doc.ownerId }, actor);
+    await assertCanRead(doc, actor);
     if (doc.scanStatus === "infected") throw domainError("Document is blocked by malware scanning.");
     return { documentId: doc._id, readUrl: await createReadUrl({ key: doc.storageKey, expiresIn }), expiresInSeconds: Math.min(Number(expiresIn) || 900, 900) };
   }

@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { jest } from "@jest/globals";
 import request from "supertest";
 import { env } from "../config/env.js";
@@ -6,11 +5,8 @@ import { app, bearer, models, seedAdmin, seedCustomer, seedProperty, seedSalesDe
 
 setupIntegrationDb();
 
-describe("payment, webhook, and upload integration", () => {
+describe("payment and upload integration", () => {
   beforeEach(() => {
-    env.RAZORPAY_KEY_ID = "rzp_test_key";
-    env.RAZORPAY_KEY_SECRET = "rzp_test_secret";
-    env.RAZORPAY_WEBHOOK_SECRET = "webhook_secret_123456";
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ id: "order_test_123", status: "created" }) }));
   });
 
@@ -148,7 +144,7 @@ describe("payment, webhook, and upload integration", () => {
     expect(retry.body.data._id).not.toBe(created.body.data._id);
   });
 
-  test("payment webhook cannot mark a manual escrow payment as paid", async () => {
+  test("removed payment webhook does not mark a payment paid", async () => {
     const { user } = await seedCustomer();
     const property = await seedProperty();
     const deal = await seedSalesDeal(user._id, property._id);
@@ -165,42 +161,15 @@ describe("payment, webhook, and upload integration", () => {
       status: "pending",
       method: "bank",
       gateway: "escrow",
-      gatewayOrderId: "order_escrow_blocked",
       isDeleted: false,
       createdAt: new Date(),
       updatedAt: new Date()
     });
-    const payload = JSON.stringify({ event_id: "evt_escrow_1", created_at: Math.floor(Date.now() / 1000), event: "payment.captured", payload: { payment: { entity: { id: "pay_escrow_1", order_id: "order_escrow_blocked", status: "captured", amount: 250000, currency: "INR" } } } });
-    const signature = crypto.createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET).update(payload).digest("hex");
-    const res = await request(app).post("/api/v1/payments/webhook").set("Content-Type", "application/json").set("x-razorpay-signature", signature).send(payload);
-    expect(res.status).toBe(422);
+    const res = await request(app).post("/api/v1/payments/webhook").set("Content-Type", "application/json").send({ event: "payment.captured" });
+    expect(res.status).toBe(404);
     expect((await models.Payment.findById(paymentId)).status).toBe("pending");
     expect((await models.SalesDeal.findById(deal._id)).financials.tokenPaid).not.toBe(true);
-  });
-
-  test("payment webhook validates signature and reserves property on captured token", async () => {
-    const { user } = await seedCustomer();
-    const property = await seedProperty();
-    const deal = await seedSalesDeal(user._id, property._id);
-    const paymentId = new models.Payment.base.Types.ObjectId();
-    const payment = { _id: paymentId, referenceId: "PAY-INT-1", userId: user._id, dealId: deal._id, propertyId: property._id, type: "token", amount: 1000, currency: "INR", status: "pending", method: "razorpay", gateway: "razorpay", gatewayOrderId: "order_capture_1", isDeleted: false, createdAt: new Date(), updatedAt: new Date() };
-    await models.Payment.collection.insertOne(payment);
-    const payload = JSON.stringify({ event_id: "evt_capture_1", created_at: Math.floor(Date.now() / 1000), event: "payment.captured", payload: { payment: { entity: { id: "pay_capture_1", order_id: payment.gatewayOrderId, status: "captured", amount: 1000, currency: "INR" } } } });
-    const signature = crypto.createHmac("sha256", env.RAZORPAY_WEBHOOK_SECRET).update(payload).digest("hex");
-
-    const res = await request(app).post("/api/v1/payments/webhook").set("Content-Type", "application/json").set("x-razorpay-signature", signature).send(payload);
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe("paid");
-    expect((await models.Property.findById(property._id)).status).toBe("reserved");
-
-    const duplicate = await request(app).post("/api/v1/payments/webhook").set("Content-Type", "application/json").set("x-razorpay-signature", signature).send(payload);
-    expect(duplicate.status).toBe(409);
-  });
-
-  test("payment webhook rejects invalid signature", async () => {
-    const payload = JSON.stringify({ event_id: "evt_bad", created_at: Math.floor(Date.now() / 1000), payload: {} });
-    const res = await request(app).post("/api/v1/payments/webhook").set("Content-Type", "application/json").set("x-razorpay-signature", "bad").send(payload);
-    expect(res.status).toBe(401);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test("upload rejects unsupported file type", async () => {

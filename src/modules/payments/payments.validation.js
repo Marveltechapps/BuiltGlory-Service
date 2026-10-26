@@ -9,7 +9,7 @@ export const listValidator = Joi.object({
     status: Joi.string().valid("created", "pending", "paid", "failed", "refunded", "cancelled", "rejected"),
     type: Joi.string().valid("token", "full", "stage", "seller_payout", "refund"),
     dealId: Joi.string().hex().length(24),
-    method: Joi.string().valid("bank", "upi", "cheque", "cash", "razorpay")
+    method: Joi.string().valid("bank", "upi", "cheque", "cash")
   }).unknown(false)
 }).unknown(true);
 export const createValidator = Joi.object({
