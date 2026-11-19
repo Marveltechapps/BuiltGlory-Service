@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import { applySchemaDefaults, arrayMax } from "../../database/schemaCommon.js";
+
+const { ObjectId, Mixed } = mongoose.Schema.Types;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const schema = new mongoose.Schema(
   {
@@ -9,10 +14,18 @@ const schema = new mongoose.Schema(
     format: { type: String, enum: ["csv", "xlsx", "pdf"], default: "xlsx" },
     frequency: { type: String, enum: ["daily", "weekly", "monthly"], required: true },
     timezone: { type: String, default: "Asia/Kolkata" },
-    filters: { type: mongoose.Schema.Types.Mixed, default: {} },
-    recipients: [{ type: String, required: true }],
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin", index: true },
+    filters: { type: Mixed, default: {} },
+    recipients: {
+      type: [{ type: String, required: true, trim: true, match: EMAIL_PATTERN }],
+      validate: arrayMax(20)
+    },
+    createdBy: { type: ObjectId, ref: "Admin", index: true },
     lastRunAt: Date,
+    /** Most recent export produced by this schedule. */
+    lastExportId: { type: ObjectId, ref: "ReportExport" },
+    lastStatus: { type: String, enum: ["success", "failed", null] },
+    /** Consecutive failures; the runner pauses the schedule after 5. */
+    failureCount: { type: Number, default: 0, min: 0 },
     nextRunAt: { type: Date, required: true, index: true }
   },
   {
@@ -24,5 +37,7 @@ const schema = new mongoose.Schema(
 );
 
 schema.index({ status: 1, nextRunAt: 1 });
+
+applySchemaDefaults(schema);
 
 export const ReportSchedule = mongoose.models.ReportSchedule || mongoose.model("ReportSchedule", schema);

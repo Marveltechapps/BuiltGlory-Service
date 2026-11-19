@@ -58,7 +58,7 @@ export const loadApiCatalog = () => {
           path: `${prefix}${routePath}`,
           auth,
           permission: permissionOf(block),
-          validates: block.includes("validate(")
+          validates: block.includes("validate(") || block.includes("validateZod(")
         });
       }
       match = next;

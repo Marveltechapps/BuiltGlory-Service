@@ -97,7 +97,7 @@ const buildFilter = (query = {}, forcedFilter = {}) => {
     filter.isVisibleOnApp = visible ? { $ne: false } : false;
   }
   if (query.status) filter.status = Array.isArray(query.status) ? { $in: query.status } : query.status;
-  if (query.verified !== undefined && (query.verified === true || query.verified === "true")) filter.status = "available";
+  if (query.verified !== undefined && (query.verified === true || query.verified === "true")) filter["verification.isVerified"] = true;
   if (query.negotiable === true || query.negotiable === "true" || query.isNegotiable === true || query.isNegotiable === "true") filter.isNegotiable = true;
   if (query.source) filter.source = query.source;
   if (query.assignedTo) filter.assignedTo = query.assignedTo;

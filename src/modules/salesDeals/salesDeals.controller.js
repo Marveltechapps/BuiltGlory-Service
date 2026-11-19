@@ -1,12 +1,20 @@
 import { createController } from "../../utils/controller.factory.js";
 import { service } from "./salesDeals.service.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+import { ok } from "../../utils/response.js";
 import * as customerDealsModule from "./salesDeals.customerDeals.js";
+import * as buyerDocuments from "./salesDeals.buyerDocuments.js";
 export const controller = {
   ...createController(service, { idParam: "dealId" }),
   getMeDeals: asyncHandler(async (req, res) => {
     const result = await customerDealsModule.listCustomerDeals(req.actor, req.query);
     res.json({ data: result.data, meta: { ...result.meta, requestId: res.locals.requestId } });
+  }),
+  getMeDeal: asyncHandler(async (req, res) => {
+    ok(res, await buyerDocuments.getBuyerDealDetail(req.actor, req.params.dealId));
+  }),
+  getMeDealDocuments: asyncHandler(async (req, res) => {
+    ok(res, await buyerDocuments.listBuyerDealDocuments(req.actor, req.params.dealId));
   }),
   getAdminSalesDealsRecommendations: asyncHandler(async (req, res) => {
     const data = await service.recommendations(req.params.dealId, req.query || {});

@@ -3,9 +3,11 @@ import helmet from "helmet";
 import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import mongoose from "mongoose";
 import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { corsOriginOption } from "./config/cors.js";
+import { getRedis } from "./config/redis.js";
 import { requestContext } from "./middleware/requestContext.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { mongoSanitize } from "./middleware/mongoSanitize.js";
@@ -30,7 +32,37 @@ export const createApp = () => {
   app.use(mongoSanitize);
   app.use(generalLimiter);
   app.get("/health", (req, res) => res.json({ status: "ok", uptimeSeconds: process.uptime() }));
-  app.get("/ready", (req, res) => res.json({ status: "ready", checks: { api: "ok", memory: "ok" } }));
+  // QA-BUG-009: readiness must fail when MongoDB or Redis is unreachable.
+  app.get("/ready", async (req, res) => {
+    const checks = { api: "ok", memory: "ok", mongodb: "unknown", redis: "unknown" };
+    let ready = true;
+    try {
+      checks.mongodb = mongoose.connection.readyState === 1 ? "ok" : "unavailable";
+      if (checks.mongodb !== "ok") ready = false;
+    } catch {
+      checks.mongodb = "error";
+      ready = false;
+    }
+    try {
+      const redis = getRedis();
+      if (typeof redis.ping === "function") {
+        const pong = await redis.ping();
+        checks.redis = pong === "PONG" || pong === "pong" ? "ok" : "unavailable";
+      } else if (env.REDIS_URL) {
+        checks.redis = "unavailable";
+        ready = false;
+      } else {
+        // In-memory stub used for local/test when REDIS_URL is unset.
+        checks.redis = "ok";
+      }
+      if (checks.redis !== "ok") ready = false;
+    } catch {
+      checks.redis = "error";
+      ready = false;
+    }
+    if (!ready) return res.status(503).json({ status: "not_ready", checks });
+    return res.json({ status: "ready", checks });
+  });
   app.get("/metrics", (req, res) => {
     const address = req.socket?.remoteAddress || "";
     const loopback = address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";

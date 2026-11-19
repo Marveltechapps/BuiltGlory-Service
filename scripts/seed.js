@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { connectDatabase, disconnectDatabase } from "../src/database/connection.js";
 import { Admin } from "../src/modules/admins/admins.model.js";
 import { makeReferenceId } from "../src/utils/id.js";
+import { seedDefaultContent } from "../src/modules/content/content.service.js";
 
 const email = process.env.SEED_ADMIN_EMAIL || "admin@builtglory.com";
 const password = process.env.SEED_ADMIN_PASSWORD || "ChangeMe123!";
@@ -22,6 +23,8 @@ try {
     await existing.save();
     console.log(`Updated admin ${email}`);
   }
+  const contentSeed = await seedDefaultContent();
+  console.log(`Content defaults inserted: ${contentSeed.inserted}`);
 } finally {
   await disconnectDatabase();
 }

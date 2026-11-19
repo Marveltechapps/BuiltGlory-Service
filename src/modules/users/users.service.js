@@ -10,6 +10,12 @@ import { getRedis } from "../../config/redis.js";
 
 const baseService = createService({ collection: "users", repository, workflowField: null, workflowMap: null, ownerField: null });
 const PROFILE_FIELDS = ["name", "email", "city", "state", "country", "latitude", "longitude", "userType", "role", "profilePhoto", "assignedTo"];
+/** Fields a signed-in customer may change. Block, assignment and KYC review stay on admin routes. */
+const CUSTOMER_PATCH_FIELDS = [
+  "name", "email", "phone", "phoneNormalized", "mobileNumber",
+  "city", "state", "country", "latitude", "longitude", "profilePhoto",
+  "userType", "role", "bankDetails", "notificationPreferences", "preferences", "privacy"
+];
 const SPARSE_UNIQUE_CONTACT_FIELDS = ["email", "mobileNumber", "phoneNormalized", "phone"];
 
 const digitsOnly = (value) => String(value || "").replace(/\D/g, "");
@@ -169,8 +175,12 @@ const deleteReplacedProfilePhoto = async ({ userId, oldUrl, newUrl, actor }) => 
 export const service = {
   ...baseService,
   async update(id, data, actor, req) {
-    const beforePhoto = data.profilePhoto !== undefined ? await repository.findById(id) : null;
-    const normalized = normalizeProfilePhoneFields(await mergeCustomerPreferences(id, data));
+    const customerPatch = {};
+    for (const field of CUSTOMER_PATCH_FIELDS) {
+      if (data[field] !== undefined) customerPatch[field] = data[field];
+    }
+    const beforePhoto = customerPatch.profilePhoto !== undefined ? await repository.findById(id) : null;
+    const normalized = normalizeProfilePhoneFields(await mergeCustomerPreferences(id, customerPatch));
     if (normalized.mobileNumber) {
       const current = await User.findById(id).select("mobileNumber").lean();
       if (current?.mobileNumber && current.mobileNumber !== normalized.mobileNumber) {
@@ -194,11 +204,54 @@ export const service = {
     }
     await assertUniqueContactFields(id, { ...setFields });
     const updated = await baseService.update(id, mongoUpdate, actor, req);
-    if (beforePhoto && data.profilePhoto !== beforePhoto.profilePhoto) {
-      await deleteReplacedProfilePhoto({ userId: id, oldUrl: beforePhoto.profilePhoto, newUrl: data.profilePhoto, actor });
+    if (beforePhoto && customerPatch.profilePhoto !== beforePhoto.profilePhoto) {
+      await deleteReplacedProfilePhoto({ userId: id, oldUrl: beforePhoto.profilePhoto, newUrl: customerPatch.profilePhoto, actor });
     }
     logger.info({ event: "user_profile_update_success", userId: String(id) });
     return updated;
+  },
+  /**
+   * Links KYC files the customer already uploaded (POST /documents, purpose kyc)
+   * onto their profile and marks the review as pending. Customers cannot set verified.
+   * Government ID numbers are not stored; the files are the record.
+   */
+  async submitKyc(id, data, actor, req) {
+    const items = Array.isArray(data?.documents) ? data.documents : [];
+    if (!items.length) throw domainError("Upload at least one KYC document.");
+    const ids = [...new Set(items.map((item) => String(item.documentId)))];
+    const files = await Document.find({
+      _id: { $in: ids },
+      ownerType: "user",
+      ownerId: id,
+      purpose: "kyc",
+      isDeleted: { $ne: true }
+    });
+    if (files.length !== ids.length) throw domainError("One or more KYC files could not be found on your account.");
+    const byId = new Map(files.map((file) => [String(file._id), file]));
+    const user = await repository.findById(id);
+    const incomingTypes = new Set(items.map((item) => item.type));
+    const kept = (user.kycDocuments || []).filter((doc) => {
+      const type = doc.type || doc.documentType;
+      return doc.status === "verified" || !incomingTypes.has(type);
+    });
+    const now = new Date();
+    for (const item of items) {
+      const file = byId.get(String(item.documentId));
+      kept.push({
+        name: file.fileName || item.type,
+        type: item.type,
+        documentType: item.type,
+        documentId: file._id,
+        status: "uploaded",
+        uploadedAt: now
+      });
+    }
+    return baseService.update(id, {
+      kycDocuments: kept.slice(-10),
+      kycStatus: "pending",
+      kycSubmittedAt: now,
+      kycRejectionReason: null
+    }, actor, req);
   },
   async updateProfile(id, data, actor, req) {
     const before = data.profilePhoto !== undefined ? await repository.findById(id) : null;
@@ -260,6 +313,43 @@ export const service = {
     const updated = await baseService.update(id, { accountDeletion }, actor, req);
     return deletionStatusOf(updated);
   },
+  /**
+   * Completes overdue deletion requests: anonymises PII, deactivates account, marks completed.
+   * Invoked by the scheduled jobs runner (not by customer API).
+   */
+  async completeDueAccountDeletions(now = new Date()) {
+    const due = await User.find({
+      "accountDeletion.status": "requested",
+      "accountDeletion.scheduledDeletionAt": { $lte: now },
+      anonymizedAt: { $exists: false },
+      isDeleted: { $ne: true }
+    }).limit(100);
+    const results = [];
+    for (const user of due) {
+      const stamp = Date.now().toString(36);
+      user.name = "Deleted User";
+      user.email = null;
+      user.phone = null;
+      user.phoneNormalized = null;
+      user.mobileNumber = null;
+      user.profilePhoto = null;
+      user.bankDetails = undefined;
+      user.pushDevices = [];
+      user.isActive = false;
+      user.anonymizedAt = now;
+      user.accountDeletion = {
+        ...(typeof user.accountDeletion?.toObject === "function" ? user.accountDeletion.toObject() : user.accountDeletion || {}),
+        status: "completed",
+        completedAt: now,
+        verificationStatus: "verified"
+      };
+      // Keep a unique inert phoneNormalized so unique indexes stay valid when present.
+      user.phoneNormalized = `deleted-${user._id}-${stamp}`;
+      await user.save();
+      results.push(String(user._id));
+    }
+    return { completed: results.length, userIds: results };
+  },
   async block(id, data, actor, req) {
     if (data.isBlocked && !data.blockedReason) throw domainError("Blocking a user requires a reason.");
     return baseService.update(id, { isBlocked: data.isBlocked, blockedReason: data.isBlocked ? data.blockedReason : null }, actor, req);
@@ -297,6 +387,8 @@ export const service = {
     return baseService.update(id, { femaCompliance: { status: data.status, notes: data.notes, checkedBy: actor.id, checkedAt: new Date() } }, actor, req);
   },
   async registerPushToken(id, data, actor, req) {
+    const { createHash } = await import("node:crypto");
+    const { Device } = await import("./users.device.model.js");
     const user = await repository.findById(id);
     const devices = [...(user.pushDevices || [])];
     const now = new Date();
@@ -313,12 +405,47 @@ export const service = {
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       .slice(0, 10);
     const updated = await baseService.update(id, { pushDevices: trimmed }, actor, req);
+
+    const tokenHash = createHash("sha256").update(data.token).digest("hex");
+    await Device.findOneAndUpdate(
+      { tokenHash },
+      {
+        $set: {
+          token: data.token,
+          tokenHash,
+          userId: user._id,
+          platform: data.platform || "android",
+          deviceId: data.deviceId || undefined,
+          appVersion: req?.headers?.["x-app-version"] || undefined,
+          lastSeenAt: now
+        },
+        $unset: { invalidatedAt: 1, invalidReason: 1 }
+      },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    );
+    const live = await Device.find({ userId: user._id, invalidatedAt: null }).sort({ lastSeenAt: -1 });
+    if (live.length > 10) {
+      const stale = live.slice(10);
+      await Device.updateMany(
+        { _id: { $in: stale.map((item) => item._id) } },
+        { $set: { invalidatedAt: now, invalidReason: "max_devices_exceeded" } }
+      );
+    }
     return { registered: true, tokenCount: updated.pushDevices?.length || 0 };
   },
   async removePushToken(id, data, actor, req) {
+    const { createHash } = await import("node:crypto");
+    const { Device } = await import("./users.device.model.js");
     const user = await repository.findById(id);
     const pushDevices = (user.pushDevices || []).filter((device) => device.token !== data.token);
     const updated = await baseService.update(id, { pushDevices }, actor, req);
+    if (data.token) {
+      const tokenHash = createHash("sha256").update(data.token).digest("hex");
+      await Device.findOneAndUpdate(
+        { tokenHash },
+        { $set: { invalidatedAt: new Date(), invalidReason: "user_removed" } }
+      );
+    }
     return { removed: pushDevices.length !== (user.pushDevices || []).length, tokenCount: updated.pushDevices?.length || 0 };
   }
 };

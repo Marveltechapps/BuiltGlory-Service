@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { controller } from "./interiorLeads.controller.js";
-import { validate } from "../../middleware/validate.js";
+import { validateZod } from "../../middleware/validateZod.js";
 import { authenticate, requireAnyPermission } from "../../middleware/auth.js";
-import { listValidator, updateValidator } from "./interiorLeads.validation.js";
+import { listSchema, updateSchema } from "./interiorLeads.schemas.js";
 const router = Router();
-router.get("/admin/interior/leads", authenticate("admin"), requireAnyPermission(["enquiries.read", "support.read"]), validate(listValidator), controller.list);
+router.get("/admin/interior/leads", authenticate("admin"), requireAnyPermission(["enquiries.read", "support.read"]), validateZod(listSchema), controller.list);
 router.get("/admin/interior/leads/:leadId", authenticate("admin"), requireAnyPermission(["enquiries.read", "support.read"]), controller.get);
-router.patch("/admin/interior/leads/:leadId", authenticate("admin"), requireAnyPermission(["enquiries.write", "support.write"]), validate(updateValidator), controller.update);
+router.patch("/admin/interior/leads/:leadId", authenticate("admin"), requireAnyPermission(["enquiries.write", "support.write"]), validateZod(updateSchema), controller.update);
 export default router;

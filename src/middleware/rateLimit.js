@@ -1,5 +1,6 @@
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { env } from "../config/env.js";
+import { getRedis } from "../config/redis.js";
 
 const isDev = env.NODE_ENV === "development" || env.NODE_ENV === "test";
 
@@ -14,6 +15,47 @@ function rateLimitJsonHandler(req, res, next, options) {
   });
 }
 
+/**
+ * OBS-05: distributed rate-limit store backed by Redis when REDIS_URL is configured.
+ * Falls back to the default in-memory store for local/test without Redis.
+ */
+const createRedisStore = (prefix) => {
+  if (!env.REDIS_URL) return undefined;
+  const windowMsByPrefix = new Map();
+  return {
+    prefix,
+    init(options) {
+      windowMsByPrefix.set(prefix, options.windowMs);
+    },
+    async increment(key) {
+      const redis = getRedis();
+      const redisKey = `${prefix}${key}`;
+      const totalHits = await redis.incr(redisKey);
+      const windowMs = windowMsByPrefix.get(prefix) || 15 * 60 * 1000;
+      if (totalHits === 1 && typeof redis.pexpire === "function") {
+        await redis.pexpire(redisKey, windowMs);
+      } else if (totalHits === 1 && typeof redis.expire === "function") {
+        await redis.expire(redisKey, Math.ceil(windowMs / 1000));
+      }
+      const ttlMs = typeof redis.pttl === "function" ? await redis.pttl(redisKey) : windowMs;
+      const resetTime = new Date(Date.now() + (ttlMs > 0 ? ttlMs : windowMs));
+      return { totalHits, resetTime };
+    },
+    async decrement(key) {
+      const redis = getRedis();
+      const redisKey = `${prefix}${key}`;
+      const value = await redis.decr?.(redisKey);
+      if (value !== undefined && value < 0 && typeof redis.set === "function") {
+        await redis.set(redisKey, "0");
+      }
+    },
+    async resetKey(key) {
+      const redis = getRedis();
+      await redis.del(`${prefix}${key}`);
+    }
+  };
+};
+
 const baseOptions = {
   standardHeaders: true,
   legacyHeaders: false,
@@ -25,13 +67,15 @@ export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   // Local Expo/device testing burns through a shared IP budget quickly (polling + retries).
   max: isDev ? 100000 : 1000,
-  skip: () => isDev
+  skip: () => isDev,
+  store: createRedisStore("rl:general:")
 });
 
 export const authLimiter = rateLimit({
   ...baseOptions,
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 200 : 25
+  max: isDev ? 200 : 25,
+  store: createRedisStore("rl:auth:")
 });
 
 // Refresh is called for every expired access token. Keep it off the tight login bucket
@@ -39,25 +83,32 @@ export const authLimiter = rateLimit({
 export const refreshLimiter = rateLimit({
   ...baseOptions,
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 100000 : 600
+  max: isDev ? 100000 : 600,
+  store: createRedisStore("rl:refresh:")
 });
 
 export const otpLimiter = rateLimit({
   ...baseOptions,
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 50 : 8,
-  keyGenerator: (req) => req.body?.phone || req.body?.mobileNumber || req.body?.email || ipKeyGenerator(req.ip)
+  // Test suites issue hundreds of OTP sends from one IP; production stays tight.
+  max: isDev ? 100000 : 8,
+  skip: () => env.NODE_ENV === "test",
+  // Key by IP (not raw phone) so an attacker cannot burn a victim's OTP budget (OBS-05).
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
+  store: createRedisStore("rl:otp:")
 });
 
 export const emailOtpLimiter = rateLimit({
   ...baseOptions,
   windowMs: 15 * 60 * 1000,
   max: isDev ? 30 : 6,
-  keyGenerator: (req) => req.body?.email || ipKeyGenerator(req.ip)
+  keyGenerator: (req) => req.body?.email || ipKeyGenerator(req.ip),
+  store: createRedisStore("rl:email-otp:")
 });
 
 export const uploadLimiter = rateLimit({
   ...baseOptions,
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 500 : 50
+  max: isDev ? 500 : 50,
+  store: createRedisStore("rl:upload:")
 });

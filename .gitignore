@@ -16,14 +16,18 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# dotenv — local secrets (keep .env.example tracked)
+# dotenv — local secrets (keep templates tracked)
 .env
 .env.*
 !.env.example
+!.env.production.example
+!.env.staging.example
 *.local
+!deploy/
 
 # Non-production — docs, AI assistants, editor config, API tooling, and load tests
-/docs/
+/docs/*
+!/docs/aws/
 load-tests/
 AGENTS.md
 CLAUDE.md
@@ -36,6 +40,9 @@ postman-*
 *.md
 !README.md
 !ARCHITECTURE.md
+!docs/aws/**/*.md
+!deploy/**/*.md
+!deploy/**/*.txt
 
 # Secrets and generated files
 config.json

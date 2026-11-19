@@ -297,6 +297,10 @@ export const service = {
     const seller = await User.findById(actor?.id);
     if (!seller || seller.isBlocked) throw domainError("Blocked or inactive sellers cannot create sell requests.");
     const isDraft = data.isDraft || data.status === "draft";
+    if (!isDraft && seller.role === "buyer") {
+      seller.role = "both";
+      await seller.save();
+    }
     if (!isDraft) validateSubmission(data, seller);
     const doc = await baseService.create(withCompleteness(null, {
       ...data,
@@ -316,7 +320,11 @@ export const service = {
     const before = await repository.findById(id);
     if (to === "new") {
       const seller = await User.findById(before.sellerId);
-      if (seller?.role === "buyer") throw domainError("Update your account to a seller before submitting a listing.");
+      // Promote buyer → both on submit so clients need not PATCH /me first (web/mobile sell wizard).
+      if (seller?.role === "buyer") {
+        seller.role = "both";
+        await seller.save();
+      }
       const merged = normalizeSellRequestPatch({ ...before.toObject(), ...extra });
       const photos = sellPhotoUrls(merged);
       if (photos.length) {
@@ -457,7 +465,13 @@ export const service = {
         enquiryCount: enquiries.length || sellRequest.metrics?.enquiryCount || 0,
         visitCount: visits.length || sellRequest.metrics?.visitCount || 0,
         chatCount: chatThreads.length,
-        payoutCount: payments.length
+        payoutCount: payments.length,
+        views: property?._id
+          ? (await import("../properties/properties.dailyStats.service.js")
+            .then((mod) => mod.sumPropertyDailyStats(property._id, 7))
+            .then((sum) => sum.views)
+            .catch(() => property.metrics?.views || 0))
+          : (sellRequest.metrics?.views || 0)
       }
     };
   },
@@ -477,6 +491,20 @@ export const service = {
       actorId: actor?.id,
       occurredAt: new Date()
     });
+    try {
+      const { appendConversationMessage } = await import("../conversationMessages/conversationMessages.service.js");
+      await appendConversationMessage({
+        conversationType: "sell_request",
+        conversationId: sellRequest._id,
+        senderType: "customer",
+        senderId: actor?.id,
+        type: "text",
+        text,
+        clientMessageId: typeof data.clientMessageId === "string" ? data.clientMessageId.trim().slice(0, 100) : undefined
+      });
+    } catch {
+      // Dual-write must not break seller messaging via communication logs.
+    }
     await writeAuditLog({ actor, action: "sellRequests.message_sent", resourceType: "sellRequests", resourceId: sellRequest._id, before: null, after: log.toObject(), req });
     return this.sellerActivity(id, actor);
   },

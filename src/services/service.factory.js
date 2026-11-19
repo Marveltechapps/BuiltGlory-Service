@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { makeReferenceId } from "../utils/id.js";
 import { assertTransition, requireSuperAdmin, validatePropertyPublication } from "./workflow.rules.js";
-import { domainError, notFound } from "../modules/error/index.js";
+import { conflict, domainError, notFound } from "../modules/error/index.js";
 import { writeAuditLog } from "./audit.service.js";
 import { enqueueInAppAndPush } from "./notification.service.js";
 import { buildWorkflowNotification } from "./workflowPush.service.js";
@@ -186,19 +186,31 @@ export const createService = ({ collection, repository, workflowField, workflowM
     return doc;
   },
   async transition(id, to, actor, req, extra = {}) {
+    const { session, ...restExtra } = extra;
     const before = await repository.findById(id);
     assertOwner(before, actor, ownerField, `${repository.Model.modelName} not found.`);
     if (workflowField && workflowMap && before[workflowField] !== to) assertTransition(workflowMap, before[workflowField], to);
-    if (collection === "properties" && to === "available") validatePropertyPublication({ ...before.toObject(), ...extra });
-    if (collection === "properties" && to === "sold" && !extra.closedDealId) throw domainError("Sold status requires a closed sales deal.");
+    if (collection === "properties" && to === "available") validatePropertyPublication({ ...before.toObject(), ...restExtra });
+    if (collection === "properties" && to === "sold" && !restExtra.closedDealId) throw domainError("Sold status requires a closed sales deal.");
     if (collection === "properties" && before[workflowField] === "sold") requireSuperAdmin(actor, "Reopening a sold property requires super admin approval.");
-    const operatorKeys = Object.keys(extra).filter((key) => key.startsWith("$"));
-    const plainExtra = Object.fromEntries(Object.entries(extra).filter(([key]) => !key.startsWith("$")));
-    const patch = operatorKeys.length ? { ...Object.fromEntries(operatorKeys.map((key) => [key, extra[key]])), $set: { ...plainExtra, [workflowField]: to } } : { ...plainExtra, [workflowField]: to };
+    const operatorKeys = Object.keys(restExtra).filter((key) => key.startsWith("$"));
+    // Transition bodies carry request-only keys (decision, reason, resolutionResponse, ...). Schemas use strict:"throw"
+    // outside production, so drop keys that are not schema paths instead of failing the update.
+    const schema = repository.Model.schema;
+    const plainExtra = Object.fromEntries(Object.entries(restExtra).filter(([key]) => !key.startsWith("$") && key !== "session" && schema.pathType(key) !== "adhocOrUndefined"));
+    const patch = operatorKeys.length ? { ...Object.fromEntries(operatorKeys.map((key) => [key, restExtra[key]])), $set: { ...plainExtra, [workflowField]: to } } : { ...plainExtra, [workflowField]: to };
     if (collection === "properties" && to === "sold") (patch.$set || patch).soldAt = new Date();
-    if (["acquisitions", "salesDeals"].includes(collection)) patch.$push = { ...(patch.$push || {}), stageHistory: { from: before[workflowField], to, changedBy: actor?.id, changedAt: new Date(), notes: extra.notes } };
-    const doc = await repository.update(id, patch);
-    await writeAuditLog({ actor, action: `${collection}.${workflowField}_changed`, resourceType: collection, resourceId: id, before: before.toObject(), after: doc.toObject(), req });
+    if (["acquisitions", "salesDeals"].includes(collection)) patch.$push = { ...(patch.$push || {}), stageHistory: { from: before[workflowField], to, changedBy: actor?.id, changedAt: new Date(), notes: restExtra.notes } };
+    // Compare-and-set on the workflow field so concurrent transitions cannot both succeed (QA-BUG-006).
+    const filter = { _id: id, isDeleted: { $ne: true } };
+    if (workflowField) filter[workflowField] = before[workflowField];
+    const doc = await repository.Model.findOneAndUpdate(filter, patch, {
+      returnDocument: "after",
+      runValidators: true,
+      ...(session ? { session } : {})
+    });
+    if (!doc) throw conflict("This resource was modified concurrently. Refresh and try again.");
+    await writeAuditLog({ actor, action: `${collection}.${workflowField}_changed`, resourceType: collection, resourceId: id, before: before.toObject(), after: doc.toObject(), req }, session ? { session } : undefined);
     await notifyLifecycle({ collection, action: "transition", doc, to });
     publishRecordChange(collection, doc);
     return doc;

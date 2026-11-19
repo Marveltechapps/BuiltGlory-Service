@@ -1,6 +1,7 @@
 import http from "node:http";
 import { createApp } from "./app.js";
 import { connectDatabase, disconnectDatabase } from "./database/connection.js";
+import { assertTransactionsAvailableInProduction } from "./database/transactions.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { closeRedis } from "./config/redis.js";
@@ -97,11 +98,14 @@ async function bootstrap() {
   registerSignalHandlers();
 
   await connectDatabase();
+  await assertTransactionsAvailableInProduction();
   const app = createApp();
   server = http.createServer(app);
   initChatSocket(server);
 
-  const bound = await listenWithPortFallback(server, PREFERRED_PORT, { allowFallback: env.NODE_ENV !== "production" });
+  const bound = await listenWithPortFallback(server, PREFERRED_PORT, {
+    allowFallback: env.NODE_ENV !== "production" && env.NODE_ENV !== "staging"
+  });
   activePort = bound.port;
 
   if (bound.fellBack) {

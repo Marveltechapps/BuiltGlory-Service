@@ -156,6 +156,10 @@ export const service = {
       const acquisition = await Acquisition.findById(property.acquisitionId).select("sellRequestId").lean();
       if (acquisition?.sellRequestId) await SellRequest.updateOne({ _id: acquisition.sellRequestId }, { $inc: { "metrics.visitCount": 1 } });
     }
+    try {
+      const { incrementPropertyDailyStat } = await import("../properties/properties.dailyStats.service.js");
+      await incrementPropertyDailyStat(data.propertyId, "visits");
+    } catch { /* metrics side-effect */ }
     await syncLinkedEnquiryStatus(visit, visit.status);
     return visit;
   },

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { applySchemaDefaults } from "../../database/schemaCommon.js";
 
 export const collectionName = "adminSettings";
 
@@ -21,7 +22,29 @@ export const schemaDefinition = {
     showPrices: { type: Boolean, default: true },
     virtualTours: { type: Boolean, default: true },
     stagePayment: { type: Boolean, default: true },
-    interior: { type: Boolean, default: true }
+    interior: { type: Boolean, default: true },
+    // PENDING PRODUCT DECISION: app.maintenance stays a Boolean (the architecture target is an object). The
+    // message / ETA live in maintenanceInfo until the /app/config contract is migrated.
+    maintenanceInfo: {
+      message: { type: String, trim: true },
+      expectedBackAt: Date
+    },
+    // Replaces the CMS record `app-force-update-config`; read by /app/config on every splash.
+    forceUpdate: {
+      enabled: { type: Boolean, default: false },
+      minVersion: { type: String, trim: true },
+      latestVersion: { type: String, trim: true },
+      message: { type: String, trim: true },
+      storeUrls: {
+        android: { type: String, trim: true },
+        ios: { type: String, trim: true }
+      }
+    }
+  },
+  // Marketing stats shown on the web app ("18 Cities", "4.8*").
+  stats: {
+    cities: { type: Number, min: 0 },
+    appRating: { type: Number, min: 0, max: 5 }
   },
   sla: {
     interiorHours: { type: Number, min: 1, max: 168 },
@@ -91,9 +114,15 @@ export const schemaDefinition = {
       active: { type: Boolean, default: true }
     }]
   },
-  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" }
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
+  /** Optimistic concurrency token (PATCH sends it; update filters on it and increments). Not enforced yet. */
+  version: { type: Number, default: 0, min: 0 }
 };
 
 export const configureSchema = (schema) => {
-  schema.index({ updatedAt: -1 });
+  // The collection holds a single document, so this index is redundant ([D] in the architecture), but it is kept
+  // declared so syncIndexes does not drop it prematurely.
+  schema.index({ updatedAt: -1 }); // [D] retain until 7-day post-deploy monitor; then drop
+  // `key` stays "dashboard"/"global" as-is (PENDING PRODUCT DECISION: do not rename dashboard -> global yet).
+  applySchemaDefaults(schema);
 };

@@ -33,11 +33,15 @@ export const getFirebaseApp = () => {
   if (firebaseApp) return firebaseApp;
   const serviceAccount = resolveServiceAccount();
   if (!serviceAccount) return null;
-  firebaseApp = admin.initializeApp({
-    credential: admin.cert(serviceAccount),
-    projectId: serviceAccount.project_id || env.FIREBASE_PROJECT_ID
-  });
-  return firebaseApp;
+  try {
+    firebaseApp = admin.initializeApp({
+      credential: admin.cert(serviceAccount),
+      projectId: serviceAccount.project_id || env.FIREBASE_PROJECT_ID
+    });
+    return firebaseApp;
+  } catch {
+    return null;
+  }
 };
 
 export const isFirebaseConfigured = () => Boolean(getFirebaseApp());

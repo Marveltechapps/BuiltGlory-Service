@@ -5,6 +5,7 @@ export const controller = {
   ...createController(service, { idParam: "userId" }),
   getMe: asyncHandler(async (req, res) => { const data = await service.get(req.actor.id, req.actor); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
   updateMe: asyncHandler(async (req, res) => { const data = await service.update(req.actor.id, req.body, req.actor, req); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
+  createMeKyc: asyncHandler(async (req, res) => { const data = await service.submitKyc(req.actor.id, req.body, req.actor, req); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
   putMePushToken: asyncHandler(async (req, res) => { const data = await service.registerPushToken(req.actor.id, req.body, req.actor, req); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
   removeMePushToken: asyncHandler(async (req, res) => { const data = await service.removePushToken(req.actor.id, req.body, req.actor, req); res.json({ data, meta: { requestId: res.locals.requestId } }); }),
   getMeAccountDeletion: asyncHandler(async (req, res) => { const data = await service.getAccountDeletionStatus(req.actor.id); res.json({ data, meta: { requestId: res.locals.requestId } }); }),

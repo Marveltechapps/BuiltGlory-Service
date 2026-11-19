@@ -1,0 +1,10 @@
+# Local development only. Do not use this file for staging or production.
+# It publishes MongoDB and Redis on localhost and stores no AWS data.
+services:
+  mongo:
+    image: mongo:7
+    ports: ["27017:27017"]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]

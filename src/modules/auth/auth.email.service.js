@@ -1,19 +1,78 @@
 import nodemailer from "nodemailer";
+import { SESClient, SendEmailCommand, GetSendQuotaCommand, ListIdentitiesCommand, GetIdentityVerificationAttributesCommand } from "@aws-sdk/client-ses";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { AppError } from "./auth.error.js";
 
 let transporter;
+let sesClient;
+
+const clean = (value) => String(value || "").trim();
+
+const useSes = () => clean(env.EMAIL_TRANSPORT).toLowerCase() === "ses";
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const isTransientEmailError = (error) => {
+  const code = String(error?.code || error?.name || "");
+  const message = String(error?.message || "");
+  return /Throttl|ServiceUnavailable|Timeout|RequestTimeout|ECONNRESET|ETIMEDOUT|EPIPE|TooManyRequests|InternalFailure|NetworkingError/i.test(`${code} ${message}`);
+};
+
+export const isSesIdentityError = (error) => {
+  const code = String(error?.code || error?.name || "");
+  const message = String(error?.message || "");
+  return /MessageRejected|MailFromDomainNotVerified|ConfigurationSetDoesNotExist|EmailAddressNotVerified|InvalidParameterValue/i.test(`${code} ${message}`)
+    || /not verified|identity|sandbox/i.test(message);
+};
+
+export const withEmailRetry = async (operation, { attempts = 3, label = "email" } = {}) => {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation(attempt);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isTransientEmailError(error)) throw error;
+      const delayMs = Math.min(250 * 2 ** (attempt - 1), 2000);
+      logger.warn({
+        event: "email_retry",
+        label,
+        attempt,
+        nextDelayMs: delayMs,
+        code: error.code || error.name,
+        message: error.message
+      });
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
+};
+
+const getSesClient = () => {
+  if (sesClient) return sesClient;
+  const accessKeyId = clean(env.AWS_ACCESS_KEY_ID);
+  const secretAccessKey = clean(env.AWS_SECRET_ACCESS_KEY);
+  sesClient = new SESClient({
+    region: clean(env.AWS_REGION) || "ap-south-1",
+    credentials: accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
+    maxAttempts: 1
+  });
+  return sesClient;
+};
 
 const getTransporter = () => {
   if (transporter) return transporter;
   if (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS) {
     throw new AppError(500, "EMAIL_CONFIG_MISSING", "SMTP email configuration is missing.");
   }
+  const port = Number(env.SMTP_PORT);
+  const secure = port === 465 || String(process.env.SMTP_SECURE || "").toLowerCase() === "true";
   transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
-    port: Number(env.SMTP_PORT),
-    secure: Number(env.SMTP_PORT) === 465,
+    port,
+    secure,
+    requireTLS: !secure && port === 587,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
@@ -26,10 +85,12 @@ const getTransporter = () => {
 };
 
 const smtpConfigSummary = () => ({
-  host: env.SMTP_HOST,
-  port: Number(env.SMTP_PORT),
-  secure: Number(env.SMTP_PORT) === 465,
-  authUser: env.SMTP_USER
+  transport: useSes() ? "ses" : "smtp",
+  host: useSes() ? `ses.${clean(env.AWS_REGION) || "ap-south-1"}.amazonaws.com` : env.SMTP_HOST,
+  port: useSes() ? null : Number(env.SMTP_PORT),
+  secure: useSes() ? true : Number(env.SMTP_PORT) === 465,
+  authUser: useSes() ? "(aws-iam)" : env.SMTP_USER,
+  region: clean(env.AWS_REGION) || "ap-south-1"
 });
 
 const serializeSendMailInfo = (info = {}) => ({
@@ -53,8 +114,34 @@ const serializeSmtpError = (error) => ({
 const isSmtpAuthFailure = (error) => error.code === "EAUTH"
   || error.responseCode === 534
   || error.responseCode === 535
-  || /auth|authentication|credentials|login/i.test(`${error.command || ""} ${error.message || ""} ${error.response || ""}`);
+  || /auth|authentication|credentials|login|WebLoginRequired/i.test(`${error.command || ""} ${error.message || ""} ${error.response || ""}`);
 
+/** Safe SES status for deploy checks — never sends mail. */
+export const getSesSendingStatus = async () => {
+  const client = getSesClient();
+  const [quota, identities] = await Promise.all([
+    client.send(new GetSendQuotaCommand({})),
+    client.send(new ListIdentitiesCommand({ MaxItems: 50 }))
+  ]);
+  const list = identities.Identities || [];
+  let verification = {};
+  if (list.length) {
+    const attrs = await client.send(new GetIdentityVerificationAttributesCommand({ Identities: list }));
+    verification = Object.fromEntries(
+      Object.entries(attrs.VerificationAttributes || {}).map(([identity, row]) => [identity, row.VerificationStatus])
+    );
+  }
+  const from = clean(env.EMAIL_FROM || env.ADMIN_EMAIL);
+  return {
+    region: clean(env.AWS_REGION) || "ap-south-1",
+    max24HourSend: quota.Max24HourSend,
+    sentLast24Hours: quota.SentLast24Hours,
+    identities: list,
+    verification,
+    fromConfigured: from,
+    fromVerified: from ? verification[from] === "Success" : false
+  };
+};
 
 const renderEmailOtpTemplate = ({ otp }) => `<!doctype html>
 <html lang="en">
@@ -88,6 +175,56 @@ const renderEmailOtpTemplate = ({ otp }) => `<!doctype html>
   </body>
 </html>`;
 
+const sendViaSes = async ({ from, to, subject, text, html }) => {
+  const result = await withEmailRetry(
+    () => getSesClient().send(new SendEmailCommand({
+      Source: from,
+      Destination: { ToAddresses: [to] },
+      Message: {
+        Subject: { Data: subject, Charset: "UTF-8" },
+        Body: {
+          Text: { Data: text, Charset: "UTF-8" },
+          ...(html ? { Html: { Data: html, Charset: "UTF-8" } } : {})
+        }
+      }
+    })),
+    { attempts: 3, label: "ses-send" }
+  );
+  return {
+    messageId: result.MessageId,
+    response: "ses-accepted",
+    accepted: [to],
+    rejected: [],
+    pending: [],
+    envelope: { from, to: [to] }
+  };
+};
+
+const deliver = async (message) => {
+  if (useSes()) {
+    if (!clean(env.AWS_ACCESS_KEY_ID) || !clean(env.AWS_SECRET_ACCESS_KEY)) {
+      throw new AppError(500, "EMAIL_CONFIG_MISSING", "AWS credentials are required for EMAIL_TRANSPORT=ses.");
+    }
+    try {
+      return await sendViaSes(message);
+    } catch (error) {
+      if (isSesIdentityError(error)) {
+        throw new AppError(
+          502,
+          "EMAIL_IDENTITY_UNVERIFIED",
+          "SES rejected the send — verify EMAIL_FROM (or domain) in Amazon SES, then retry.",
+          [serializeSmtpError(error)]
+        );
+      }
+      throw error;
+    }
+  }
+  return withEmailRetry(
+    () => getTransporter().sendMail(message),
+    { attempts: 3, label: "smtp-send" }
+  );
+};
+
 export const sendEmailOtp = async ({ email, otp }) => {
   const from = env.EMAIL_FROM || "admin@builtglory.com";
   const message = {
@@ -106,8 +243,7 @@ export const sendEmailOtp = async ({ email, otp }) => {
   });
 
   try {
-    const mailTransporter = getTransporter();
-    const info = await mailTransporter.sendMail(message);
+    const info = await deliver(message);
     const smtpInfo = serializeSendMailInfo(info);
     logger.info({
       event: "email_otp_sendmail_success",
@@ -186,8 +322,7 @@ export const sendTransactionalEmail = async ({ to, subject, body, from }) => {
   });
 
   try {
-    const mailTransporter = getTransporter();
-    const info = await mailTransporter.sendMail(message);
+    const info = await deliver(message);
     const smtpInfo = serializeSendMailInfo(info);
     logger.info({
       event: "transactional_email_send_success",

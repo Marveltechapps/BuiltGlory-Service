@@ -123,5 +123,45 @@ export const DEFAULT_CONTENT_ITEMS = [
     category: "Policy",
     order: 30,
     metadata: { readTime: "5 min", publishedLabel: "2 weeks ago" }
+  },
+  {
+    slug: "offer-home-loan",
+    section: "general",
+    title: "Home Loan at preferential rates",
+    excerpt: "Partner banks · Limited time",
+    body: "Eligible Builtglory buyers can apply for partner-bank home loans. Rates and tenure depend on the active bank offer.",
+    category: "offers",
+    order: 10,
+    metadata: { icon: "percent", tag: "Finance", color: "#1A6FFF" }
+  },
+  {
+    slug: "offer-free-legal",
+    section: "general",
+    title: "Free Legal Verification",
+    excerpt: "For premium listings",
+    body: "Legal title checks are included for eligible premium listings closed through Builtglory.",
+    category: "offers",
+    order: 20,
+    metadata: { icon: "shield", tag: "New", color: "#10B981" }
+  },
+  {
+    slug: "offer-interior-consult",
+    section: "general",
+    title: "Free Interior Consult",
+    excerpt: "For buyers who close this month",
+    body: "Book a complimentary interior consultation after your token payment is confirmed.",
+    category: "offers",
+    order: 30,
+    metadata: { icon: "truck", tag: "Limited", color: "#F59E0B" }
+  },
+  {
+    slug: "offer-priority-boost",
+    section: "general",
+    title: "Priority Listing Boost",
+    excerpt: "Sell faster with featured placement",
+    body: "Sellers can request a priority boost for verified listings to improve discovery.",
+    category: "offers",
+    order: 40,
+    metadata: { icon: "star", tag: "Seller", color: "#8B5CF6" }
   }
 ];

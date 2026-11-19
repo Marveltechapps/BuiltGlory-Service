@@ -46,13 +46,13 @@ export const service = {
         tokenAmount: payment.tokenAmount ?? 250000,
         escrow: payment.escrow || null
       },
+      stats: {
+        cities: settings?.stats?.cities ?? 18,
+        appRating: settings?.stats?.appRating ?? 4.8
+      },
       support: {
         ...companyContactPublic(),
         phone: settings?.organization?.phone || companyContactPublic().supportPhone
-      },
-      stats: {
-        cities: 18,
-        appRating: 4.8
       },
       dashboardOptions: {
         ...DEFAULT_DASHBOARD_OPTIONS,

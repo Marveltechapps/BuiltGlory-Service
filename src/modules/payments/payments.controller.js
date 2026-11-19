@@ -10,5 +10,9 @@ export const controller = {
   updateAdminPaymentsVerify: asyncHandler(async (req, res) => {
     const data = await service.verify(req.params.paymentId, req.body, req.actor, req);
     res.json({ data, meta: { requestId: res.locals.requestId } });
+  }),
+  recordVerifiedRefund: asyncHandler(async (req, res) => {
+    const data = await service.recordVerifiedRefund(req.params.paymentId, req.body, req.actor, req);
+    res.status(200).json({ data, meta: { requestId: res.locals.requestId } });
   })
 };

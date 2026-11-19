@@ -1,0 +1,21 @@
+[Unit]
+Description=BuiltGlory API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=builtglory
+Group=builtglory
+WorkingDirectory=/opt/builtglory/api
+EnvironmentFile=/etc/builtglory/api.env
+ExecStart=/usr/bin/node src/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

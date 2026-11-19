@@ -56,7 +56,7 @@ export const service = {
   async get(id, actor) {
     return enrich(await baseService.get(id, actor));
   },
-  async create(data, actor) {
+  async create(data, actor, req) {
     const buyer = await User.findById(actor?.id);
     if (!buyer || buyer.isBlocked) throw domainError("Blocked or inactive customers cannot create enquiries.");
     if (data.preferredContact === "email" && !buyer.email) throw domainError("Email contact requires a customer email.");
@@ -64,8 +64,13 @@ export const service = {
     const property = await Property.findOne({ _id: data.propertyId, status: { $in: ["available", "reserved", "under_construction"] }, isDeleted: { $ne: true } });
     if (!property) throw domainError("Property must exist and be visible.");
     const original = await repository.findOne({ propertyId: property._id, buyerId: buyer._id });
+    // QA-BUG-012: derive source from trusted client header, never from the request body.
+    const clientHeader = String(req?.headers?.["x-client"] || "").trim().toLowerCase();
+    const source = ["web", "app", "dashboard", "callback", "import"].includes(clientHeader) ? clientHeader : "app";
+    const { source: _ignoredSource, ...safeData } = data || {};
     const enquiry = await baseService.create({
-      ...data,
+      ...safeData,
+      source,
       buyerId: buyer._id,
       buyerSnapshot: { name: buyer.name, phone: buyer.phone, email: buyer.email, userType: buyer.userType },
       propertySnapshot: { title: property.title, price: property.price, type: property.type, location: [property.address?.locality, property.address?.city].filter(Boolean).join(", ") },
@@ -77,6 +82,10 @@ export const service = {
       const acquisition = await Acquisition.findById(property.acquisitionId).select("sellRequestId").lean();
       if (acquisition?.sellRequestId) await SellRequest.updateOne({ _id: acquisition.sellRequestId }, { $inc: { "metrics.enquiryCount": 1 } });
     }
+    try {
+      const { incrementPropertyDailyStat } = await import("../properties/properties.dailyStats.service.js");
+      await incrementPropertyDailyStat(property._id, "enquiries");
+    } catch { /* metrics side-effect */ }
     return enquiry;
   },
   async convertToDeal(id, data, actor) {

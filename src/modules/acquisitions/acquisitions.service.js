@@ -23,9 +23,33 @@ const sellerSnapshotFor = async (sellRequest) => {
   const seller = await User.findById(sellRequest.sellerId).select("name phone email userType kycStatus").lean();
   return fillSnapshot(snapshot, seller);
 };
-const linkSellRequest = (sellRequestId, acquisitionId) => {
+const linkSellRequest = (sellRequestId, acquisitionId, status) => {
   if (!sellRequestId || !acquisitionId) return Promise.resolve();
-  return SellRequest.updateOne({ _id: sellRequestId }, { $set: { acquisitionId } });
+  const $set = { acquisitionId };
+  if (status) $set.status = status;
+  return SellRequest.updateOne({ _id: sellRequestId }, { $set });
+};
+
+/** Sell-request address uses `street`; Property address uses `line1` (QA-BUG-001). */
+const mapSellAddressToProperty = (address) => {
+  if (!address || typeof address !== "object") return address;
+  const src = typeof address.toObject === "function" ? address.toObject() : { ...address };
+  const { street, line1, ...rest } = src;
+  return {
+    ...rest,
+    line1: line1 || street || undefined
+  };
+};
+
+const assertSellerKycVerified = async (acquisition) => {
+  let kycStatus = acquisition.sellerSnapshot?.kycStatus;
+  if (acquisition.sellerId) {
+    const seller = await User.findById(acquisition.sellerId).select("kycStatus").lean();
+    if (seller?.kycStatus) kycStatus = seller.kycStatus;
+  }
+  if (kycStatus !== "verified") {
+    throw domainError("Seller KYC must be verified before token-to-seller or seller payout.");
+  }
 };
 const buildAcquisitionFromSellRequest = (sellRequest, data = {}, sellerSnapshot) => ({
   ...data,
@@ -123,12 +147,15 @@ export const service = {
       }
       const active = await repository.findOne({ sellRequestId: sellRequest._id, stage: { $nin: ["rejected"] } });
       if (active) {
-        await linkSellRequest(sellRequest._id, active._id);
+        await linkSellRequest(sellRequest._id, active._id, data.acceptSellRequest ? "accepted" : undefined);
         return active;
       }
       const sellerSnapshot = await sellerSnapshotFor(sellRequest);
-      const created = await baseService.create(buildAcquisitionFromSellRequest(sellRequest, data, sellerSnapshot), actor);
-      await linkSellRequest(sellRequest._id, created._id);
+      const { acceptSellRequest, ...createData } = data;
+      const created = await baseService.create(buildAcquisitionFromSellRequest(sellRequest, createData, sellerSnapshot), actor);
+      // QA-BUG-002: only the admin "Accept for Acquisition" path flips sell-request status.
+      // Auto-ensure on sell submit / list backfill must keep status as new/under_review for admin review.
+      await linkSellRequest(sellRequest._id, created._id, acceptSellRequest ? "accepted" : undefined);
       return created;
     }
     return baseService.create({ ...data, createdFrom: data.createdFrom || "manual", lastActivityAt: new Date() }, actor);
@@ -149,6 +176,10 @@ export const service = {
     }
     if (to === "negotiation" && !builtgloryOffer) {
       throw domainError("Valuation amount is required before negotiation.");
+    }
+    // QA-BUG-003: enforce seller KYC before money leaves / seller token stages.
+    if (to === "token_to_seller" || to === "seller_payout") {
+      await assertSellerKycVerified(before);
     }
     if (to === "token_to_seller" && !agreedPrice) {
       throw domainError("Agreed price is required before seller token.");
@@ -182,7 +213,14 @@ export const service = {
     delete patch.stage;
     delete patch.status;
     delete patch.decision;
-    return baseService.transition(id, to, actor, req, patch);
+    const doc = await baseService.transition(id, to, actor, req, patch);
+    // QA-BUG-002: keep sell-request status aligned with acquisition lifecycle.
+    if (before.sellRequestId && to === "acquired") {
+      await SellRequest.updateOne({ _id: before.sellRequestId }, { $set: { status: "sold" } });
+    } else if (before.sellRequestId && to === "rejected") {
+      await SellRequest.updateOne({ _id: before.sellRequestId }, { $set: { status: "rejected" } });
+    }
+    return doc;
   },
   async convertToProperty(id, data, actor, req) {
     const acquisition = await repository.findById(id);
@@ -196,20 +234,22 @@ export const service = {
     }
     return withTransaction(async (session) => {
       const details = acquisition.propertyDetails?.toObject?.() || acquisition.propertyDetails || {};
+      const address = data.address || mapSellAddressToProperty(details.address);
       const property = await Property.create([{
         referenceId: makeReferenceId("properties"),
         title: data.title || acquisition.propertyTitle,
         description: data.description || acquisition.propertyTitle,
         type: normalizePropertyType(data.type || acquisition.propertyType),
         price: data.price || acquisition.finalPurchasePrice || acquisition.agreedPrice || acquisition.askingPrice,
-        address: data.address || details.address,
+        address,
         specs: details.specifications || {},
         amenities: details.amenities || [],
         media: { photos: acquisition.photos || [] },
         source: "acquired",
         status: "draft",
         isVisibleOnApp: false,
-        acquisitionId: acquisition._id
+        acquisitionId: acquisition._id,
+        sellerId: acquisition.sellerId || undefined
       }], { session }).then((rows) => rows[0]);
       await repository.update(id, { propertyId: property._id }, { session });
       await writeAuditLog({ actor, action: "acquisitions.converted_to_property", resourceType: "acquisitions", resourceId: acquisition._id, before: acquisition.toObject(), after: { propertyId: property._id, referenceId: property.referenceId }, req }, { session });

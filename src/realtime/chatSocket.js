@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
 import { env } from "../config/env.js";
 import { corsOriginOption } from "../config/cors.js";
 import { getRedis } from "../config/redis.js";
@@ -10,6 +11,7 @@ import { service as supportTicketService } from "../modules/supportTickets/suppo
 import { service as sellRequestService } from "../modules/sellRequests/sellRequests.service.js";
 
 let io;
+let socketSubscriber;
 
 /** @type {Map<string, Map<string, { type: string, id: string }>>} */
 const roomViewers = new Map();
@@ -116,6 +118,13 @@ export function publishSellerActivity(sellRequestId, activity) {
   io.of("/chat").to(sellRoom(sellRequestId)).emit("sell:activity_updated", { activity });
 }
 
+function attachRedisAdapter(server) {
+  const redis = getRedis();
+  if (!env.REDIS_URL || typeof redis.duplicate !== "function") return;
+  socketSubscriber = redis.duplicate();
+  server.adapter(createAdapter(redis, socketSubscriber));
+}
+
 export function initChatSocket(httpServer) {
   io = new Server(httpServer, {
     cors: {
@@ -127,6 +136,7 @@ export function initChatSocket(httpServer) {
     pingTimeout: 30000,
     pingInterval: 25000
   });
+  attachRedisAdapter(io);
 
   const chat = io.of("/chat");
   chat.use(async (socket, next) => {
@@ -218,7 +228,8 @@ export function initChatSocket(httpServer) {
 
     socket.on("sell:join", async ({ sellRequestId } = {}, ack) => {
       try {
-        assertStaff(socket.actor, ["sellRequests.read", "acquisitions.read"], "You do not have permission to view seller chats.");
+        // Align with HTTP sell-request routes (enquiries.* / acquisitions.*).
+        assertStaff(socket.actor, ["enquiries.read", "acquisitions.read"], "You do not have permission to view seller chats.");
         const activity = await sellRequestService.sellerActivity(sellRequestId, socket.actor);
         socket.join(sellRoom(String(activity.sellRequest?._id ?? sellRequestId)));
         emitAck(ack, { ok: true, activity });
@@ -229,7 +240,7 @@ export function initChatSocket(httpServer) {
 
     socket.on("sell:send", async ({ sellRequestId, text } = {}, ack) => {
       try {
-        assertStaff(socket.actor, ["sellRequests.write"], "You do not have permission to message sellers.");
+        assertStaff(socket.actor, ["enquiries.write", "acquisitions.write"], "You do not have permission to message sellers.");
         const activity = await sellRequestService.sellerMessage(sellRequestId, { text }, socket.actor);
         const roomId = String(activity.sellRequest?._id ?? sellRequestId);
         socket.join(sellRoom(roomId));
@@ -255,8 +266,16 @@ export function closeChatSocket() {
       return;
     }
     const active = io;
+    const subscriber = socketSubscriber;
     io = undefined;
+    socketSubscriber = undefined;
     roomViewers.clear();
-    active.close(() => resolve());
+    active.close(() => {
+      if (subscriber && typeof subscriber.quit === "function") {
+        subscriber.quit().catch(() => subscriber.disconnect?.()).finally(resolve);
+        return;
+      }
+      resolve();
+    });
   });
 }

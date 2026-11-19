@@ -1,76 +1,178 @@
 import dotenv from "dotenv";
-import Joi from "joi";
+import { z } from "zod";
+
 dotenv.config();
-const schema = Joi.object({
-  NODE_ENV: Joi.string().valid("development", "test", "staging", "production").default("development"),
-  PORT: Joi.number().default(5001),
-  MONGODB_URI: Joi.string().when("NODE_ENV", { is: "production", then: Joi.required(), otherwise: Joi.string().default("mongodb://127.0.0.1:27017/builtglory") }),
-  MONGODB_DNS_SERVERS: Joi.string().allow("").default(""),
-  JWT_SECRET: Joi.string().min(24).allow("").default(""),
-  JWT_ACCESS_SECRET: Joi.string().min(24).when("NODE_ENV", { is: "production", then: Joi.required(), otherwise: Joi.string().default("dev-access-secret-change-before-production") }),
-  JWT_REFRESH_SECRET: Joi.string().min(24).when("NODE_ENV", { is: "production", then: Joi.required(), otherwise: Joi.string().default("dev-refresh-secret-change-before-production") }),
-  JWT_ISSUER: Joi.string().default("builtglory-api"),
-  JWT_AUDIENCE: Joi.string().default("builtglory-clients"),
-  JWT_ACCESS_EXPIRES_IN: Joi.string().default("15m"),
-  JWT_REFRESH_EXPIRES_IN: Joi.string().default("30d"),
-  ADMIN_INACTIVITY_SECONDS: Joi.number().default(1800),
-  OTP_EXPIRES_SECONDS: Joi.number().default(300),
-  OTP_RESEND_SECONDS: Joi.number().default(60),
-  OTP_MAX_ATTEMPTS: Joi.number().default(5),
-  WEBHOOK_TOLERANCE_SECONDS: Joi.number().default(300),
-  REDIS_URL: Joi.string().allow("").default(""),
-  CORS_ORIGINS: Joi.string().when("NODE_ENV", { is: "production", then: Joi.string().min(1).required(), otherwise: Joi.string().allow("").default("") }),
-  AWS_REGION: Joi.string().default("ap-south-1"),
-  AWS_S3_BUCKET: Joi.string().allow("").default(""),
-  AWS_ACCESS_KEY_ID: Joi.string().allow("").default(""),
-  AWS_SECRET_ACCESS_KEY: Joi.string().allow("").default(""),
-  RAZORPAY_KEY_ID: Joi.string().allow("").default(""),
-  RAZORPAY_KEY_SECRET: Joi.string().allow("").default(""),
-  RAZORPAY_WEBHOOK_SECRET: Joi.string().allow("").default(""),
-  MALWARE_SCANNER_MODE: Joi.string().valid("disabled", "clamav", "provider").default("disabled"),
-  QUARANTINE_S3_BUCKET: Joi.string().allow("").default(""),
-  SMS_PROVIDER_URL: Joi.string().allow("").default(""),
-  SMS_PROVIDER_TOKEN: Joi.string().allow("").default(""),
-  // Spear UC / gateway base URL ending with "&". Credentials live only in the environment.
-  SMS_VENDOR_URL: Joi.string().allow("").default(""),
-  // vendor = real SMS gateway (production). log = store OTP + log to server (non-production only).
-  SMS_DELIVERY_MODE: Joi.string().valid("vendor", "log").default("vendor"),
-  SMS_OTP_MESSAGE_TEMPLATE: Joi.string().allow("").default(""),
-  SMTP_HOST: Joi.string().allow("").default(""),
-  SMTP_PORT: Joi.number().default(587),
-  SMTP_USER: Joi.string().allow("").default(""),
-  SMTP_PASS: Joi.string().allow("").default(""),
-  EMAIL_FROM: Joi.string().email({ tlds: { allow: false } }).default("admin@builtglory.com"),
-  ADMIN_EMAIL: Joi.string().email({ tlds: { allow: false } }).default("admin@builtglory.com"),
-  WHATSAPP_PROVIDER_URL: Joi.string().allow("").default(""),
-  WHATSAPP_PROVIDER_TOKEN: Joi.string().allow("").default(""),
-  EMAIL_PROVIDER_URL: Joi.string().allow("").default(""),
-  EMAIL_PROVIDER_TOKEN: Joi.string().allow("").default(""),
-  PUSH_PROVIDER_URL: Joi.string().allow("").default(""),
-  PUSH_PROVIDER_TOKEN: Joi.string().allow("").default(""),
-  FIREBASE_PROJECT_ID: Joi.string().allow("").default("builtglory-properties"),
-  FIREBASE_CLIENT_EMAIL: Joi.string().email({ tlds: { allow: false } }).allow("").default(""),
-  FIREBASE_PRIVATE_KEY: Joi.string().allow("").default(""),
-  FIREBASE_SERVICE_ACCOUNT_PATH: Joi.string().allow("").default(""),
-  APP_CURRENT_VERSION: Joi.string().default("1.0.0"),
-  APP_MIN_SUPPORTED_VERSION: Joi.string().default("1.0.0"),
-  APP_LATEST_VERSION: Joi.string().default("1.0.0"),
-  APP_IOS_STORE_URL: Joi.string().uri().allow("").default("https://apps.apple.com"),
-  APP_ANDROID_STORE_URL: Joi.string().uri().allow("").default("https://play.google.com/store/apps"),
-  APP_MAINTENANCE_ENABLED: Joi.boolean().truthy("true").falsy("false").default(false),
-  APP_MAINTENANCE_MESSAGE: Joi.string().allow("").default("Builtglory is under maintenance. We'll be back shortly."),
-  APP_MAINTENANCE_BACK_AT: Joi.string().allow("").default(""),
-  APP_FEATURE_FLAGS: Joi.string().allow("").default("{}"),
-  COMPANY_SUPPORT_PHONE: Joi.string().default("+91 8667769670"),
-  COMPANY_WHATSAPP_NUMBER: Joi.string().allow("").default(""),
-  COMPANY_SUPPORT_EMAIL: Joi.string().email({ tlds: { allow: false } }).default("support@builtglory.com"),
-  APP_PUBLIC_URL: Joi.string().uri({ scheme: ["http", "https"] }).allow("").default(""),
-  ANDROID_APPLICATION_ID: Joi.string().default("com.builtglory.builtglory"),
-  ANDROID_SHA256_CERT_FINGERPRINTS: Joi.string().allow("").default(""),
-  IOS_APP_ID: Joi.string().allow("").default("com.builtglory.builtglory")
-}).unknown();
-const { value, error } = schema.validate(process.env, { abortEarly: false });
-if (error) throw new Error("Invalid environment: " + error.details.map((d) => d.message).join(", "));
+
+const emptyToUndefined = (v) => (v === "" || v === undefined || v === null ? undefined : v);
+
+const boolFromEnv = z.preprocess((v) => {
+  if (v === true || v === "true") return true;
+  if (v === false || v === "false") return false;
+  return v;
+}, z.boolean());
+
+const emailLoose = z.string().email();
+
+const schema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
+    PORT: z.coerce.number().default(5001),
+    MONGODB_URI: z.preprocess(emptyToUndefined, z.string().optional()),
+    MONGODB_DNS_SERVERS: z.string().default(""),
+    JWT_SECRET: z.string().default(""),
+    JWT_ACCESS_SECRET: z.string().default("dev-access-secret-change-before-production"),
+    JWT_REFRESH_SECRET: z.string().default("dev-refresh-secret-change-before-production"),
+    JWT_ISSUER: z.string().default("builtglory-api"),
+    JWT_AUDIENCE: z.string().default("builtglory-clients"),
+    JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
+    JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
+    ADMIN_INACTIVITY_SECONDS: z.coerce.number().default(1800),
+    OTP_EXPIRES_SECONDS: z.coerce.number().default(300),
+    OTP_RESEND_SECONDS: z.coerce.number().default(60),
+    OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
+    WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().default(300),
+    REDIS_URL: z.string().default(""),
+    /** When false, rediss:// accepts self-signed / private CA (rarely needed). Default true. */
+    REDIS_TLS_REJECT_UNAUTHORIZED: boolFromEnv.default(true),
+    CORS_ORIGINS: z.string().default(""),
+    AWS_REGION: z.string().default("ap-south-1"),
+    AWS_S3_BUCKET: z.string().default(""),
+    AWS_ACCESS_KEY_ID: z.string().default(""),
+    AWS_SECRET_ACCESS_KEY: z.string().default(""),
+    RAZORPAY_KEY_ID: z.string().default(""),
+    RAZORPAY_KEY_SECRET: z.string().default(""),
+    RAZORPAY_WEBHOOK_SECRET: z.string().default(""),
+    MALWARE_SCANNER_MODE: z.enum(["disabled", "clamav", "provider"]).default("disabled"),
+    QUARANTINE_S3_BUCKET: z.string().default(""),
+    SMS_PROVIDER_URL: z.string().default(""),
+    SMS_PROVIDER_TOKEN: z.string().default(""),
+    // Spear UC / gateway base URL ending with "&". Credentials live only in the environment.
+    SMS_VENDOR_URL: z.string().default(""),
+    // vendor = real SMS gateway (production). log = store OTP + log to server (non-production only).
+    SMS_DELIVERY_MODE: z.enum(["vendor", "log"]).default("vendor"),
+    SMS_OTP_MESSAGE_TEMPLATE: z.string().default(""),
+    SMTP_HOST: z.string().default(""),
+    SMTP_PORT: z.coerce.number().default(587),
+    SMTP_USER: z.string().default(""),
+    SMTP_PASS: z.string().default(""),
+    /** smtp = nodemailer SMTP; ses = AWS SES API (preferred when Gmail/SMTP is blocked). */
+    EMAIL_TRANSPORT: z.enum(["smtp", "ses"]).default("smtp"),
+    EMAIL_FROM: emailLoose.default("admin@builtglory.com"),
+    ADMIN_EMAIL: emailLoose.default("admin@builtglory.com"),
+    WHATSAPP_PROVIDER_URL: z.string().default(""),
+    WHATSAPP_PROVIDER_TOKEN: z.string().default(""),
+    EMAIL_PROVIDER_URL: z.string().default(""),
+    EMAIL_PROVIDER_TOKEN: z.string().default(""),
+    PUSH_PROVIDER_URL: z.string().default(""),
+    PUSH_PROVIDER_TOKEN: z.string().default(""),
+    FIREBASE_PROJECT_ID: z.string().default("builtglory-properties"),
+    FIREBASE_CLIENT_EMAIL: z.union([z.literal(""), emailLoose]).default(""),
+    FIREBASE_PRIVATE_KEY: z.string().default(""),
+    FIREBASE_SERVICE_ACCOUNT_PATH: z.string().default(""),
+    APP_CURRENT_VERSION: z.string().default("1.0.0"),
+    APP_MIN_SUPPORTED_VERSION: z.string().default("1.0.0"),
+    APP_LATEST_VERSION: z.string().default("1.0.0"),
+    APP_IOS_STORE_URL: z.string().default("https://apps.apple.com"),
+    APP_ANDROID_STORE_URL: z.string().default("https://play.google.com/store/apps"),
+    APP_MAINTENANCE_ENABLED: boolFromEnv.default(false),
+    APP_MAINTENANCE_MESSAGE: z.string().default("Builtglory is under maintenance. We'll be back shortly."),
+    APP_MAINTENANCE_BACK_AT: z.string().default(""),
+    APP_FEATURE_FLAGS: z.string().default("{}"),
+    COMPANY_SUPPORT_PHONE: z.string().default("+91 8667769670"),
+    COMPANY_WHATSAPP_NUMBER: z.string().default(""),
+    COMPANY_SUPPORT_EMAIL: emailLoose.default("support@builtglory.com"),
+    APP_PUBLIC_URL: z.string().default(""),
+    ANDROID_APPLICATION_ID: z.string().default("com.builtglory.builtglory"),
+    ANDROID_SHA256_CERT_FINGERPRINTS: z.string().default(""),
+    IOS_APP_ID: z.string().default("com.builtglory.builtglory")
+  })
+  .passthrough()
+  .superRefine((data, ctx) => {
+    const isProdLike = data.NODE_ENV === "production" || data.NODE_ENV === "staging";
+    if (data.NODE_ENV === "production" && !data.MONGODB_URI) {
+      ctx.addIssue({ code: "custom", path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
+    }
+    if (!data.MONGODB_URI && data.NODE_ENV !== "production") {
+      data.MONGODB_URI = "mongodb://127.0.0.1:27017/builtglory";
+    }
+    if (isProdLike) {
+      if (!process.env.JWT_ACCESS_SECRET || data.JWT_ACCESS_SECRET.length < 24) {
+        ctx.addIssue({ code: "custom", path: ["JWT_ACCESS_SECRET"], message: "JWT_ACCESS_SECRET is required (min 24 chars) in production/staging" });
+      }
+      if (!process.env.JWT_REFRESH_SECRET || data.JWT_REFRESH_SECRET.length < 24) {
+        ctx.addIssue({ code: "custom", path: ["JWT_REFRESH_SECRET"], message: "JWT_REFRESH_SECRET is required (min 24 chars) in production/staging" });
+      }
+      if (!process.env.JWT_ISSUER || !String(data.JWT_ISSUER).trim()) {
+        ctx.addIssue({ code: "custom", path: ["JWT_ISSUER"], message: "JWT_ISSUER is required in production/staging" });
+      }
+      if (!process.env.JWT_AUDIENCE || !String(data.JWT_AUDIENCE).trim()) {
+        ctx.addIssue({ code: "custom", path: ["JWT_AUDIENCE"], message: "JWT_AUDIENCE is required in production/staging" });
+      }
+      if (!data.REDIS_URL || !String(data.REDIS_URL).trim()) {
+        ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL is required in production/staging (in-memory sessions are not allowed)" });
+      } else {
+        const redisUrl = String(data.REDIS_URL).trim();
+        if (!/^redis(s)?:\/\//i.test(redisUrl)) {
+          ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL must use redis:// or rediss://" });
+        }
+        if (data.NODE_ENV === "production") {
+          if (!/^rediss:\/\//i.test(redisUrl)) {
+            ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL must use rediss:// (TLS) in production" });
+          }
+          if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(redisUrl)) {
+            ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL must not use localhost in production" });
+          }
+        }
+      }
+      if (!data.CORS_ORIGINS || !String(data.CORS_ORIGINS).trim()) {
+        ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "CORS_ORIGINS is required in production/staging" });
+      } else {
+        const origins = String(data.CORS_ORIGINS).split(",").map((s) => s.trim()).filter(Boolean);
+        if (origins.some((o) => o === "*" || o.includes("*"))) {
+          ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "CORS_ORIGINS must not include wildcards in production/staging" });
+        }
+        if (data.NODE_ENV === "production" && origins.some((o) => /localhost|127\.0\.0\.1/i.test(o))) {
+          ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "CORS_ORIGINS must not include localhost in production" });
+        }
+        if (data.NODE_ENV === "production" && origins.some((o) => !/^https:\/\//i.test(o))) {
+          ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "CORS_ORIGINS must be https:// origins in production" });
+        }
+      }
+      if (!data.APP_PUBLIC_URL || !String(data.APP_PUBLIC_URL).trim()) {
+        ctx.addIssue({ code: "custom", path: ["APP_PUBLIC_URL"], message: "APP_PUBLIC_URL is required in production/staging" });
+      } else if (data.NODE_ENV === "production") {
+        if (/localhost|127\.0\.0\.1/i.test(data.APP_PUBLIC_URL)) {
+          ctx.addIssue({ code: "custom", path: ["APP_PUBLIC_URL"], message: "APP_PUBLIC_URL must not be localhost in production" });
+        }
+        if (!/^https:\/\//i.test(String(data.APP_PUBLIC_URL).trim())) {
+          ctx.addIssue({ code: "custom", path: ["APP_PUBLIC_URL"], message: "APP_PUBLIC_URL must be https:// in production" });
+        }
+      }
+      if (data.NODE_ENV === "production" && String(data.EMAIL_TRANSPORT || "smtp").toLowerCase() === "smtp") {
+        if (/gmail\.com/i.test(String(data.SMTP_HOST || ""))) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["EMAIL_TRANSPORT"],
+            message: "Gmail SMTP is not reliable in production (WebLoginRequired). Use EMAIL_TRANSPORT=ses"
+          });
+        }
+      }
+      if (data.NODE_ENV === "production" && /^arn:aws:s3:::/i.test(String(data.AWS_S3_BUCKET || ""))) {
+        ctx.addIssue({ code: "custom", path: ["AWS_S3_BUCKET"], message: "AWS_S3_BUCKET must be the bucket name, not an ARN" });
+      }
+    }
+  });
+
+const parsed = schema.safeParse(process.env);
+if (!parsed.success) {
+  const messages = parsed.error.issues.map((i) => `${i.path.join(".") || "env"}: ${i.message}`);
+  throw new Error("Invalid environment: " + messages.join(", "));
+}
+
+const value = parsed.data;
+if (!value.MONGODB_URI) {
+  value.MONGODB_URI = "mongodb://127.0.0.1:27017/builtglory";
+}
 
 const DEV_ACCESS_SECRET = "dev-access-secret-change-before-production";
 const DEV_REFRESH_SECRET = "dev-refresh-secret-change-before-production";

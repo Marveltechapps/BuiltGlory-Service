@@ -842,9 +842,10 @@ export const service = {
     ]);
     return { data, meta: paginationMeta(page, limit, total) };
   },
-  async getExport(id) {
+  async getExport(id, { withFileContent = false } = {}) {
     const query = id.match(/^[a-f\d]{24}$/i) ? { $or: [{ _id: id }, { referenceId: id }] } : { referenceId: id };
-    const exportJob = await ReportExport.findOne(query);
+    // fileContent is select:false; only the download path needs the legacy in-document bytes.
+    const exportJob = await (withFileContent ? ReportExport.findOne(query).select("+fileContent") : ReportExport.findOne(query));
     if (!exportJob) throw notFound("Report export job not found.");
     return exportJob;
   },
@@ -869,7 +870,7 @@ export const service = {
     };
   },
   async downloadExport(id, token) {
-    const exportJob = await this.getExport(id);
+    const exportJob = await this.getExport(id, { withFileContent: true });
     if (exportJob.status !== "completed") throw domainError("Export is not ready for download.");
     if (exportJob.expiresAt <= new Date()) {
       exportJob.status = "expired";

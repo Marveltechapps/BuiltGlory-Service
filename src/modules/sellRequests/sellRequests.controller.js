@@ -60,7 +60,12 @@ export const controller = {
   }),
   createAdminSellRequestsCreateAcquisition: asyncHandler(async (req, res) => {
     const { service: acquisitionService } = await import("../acquisitions/acquisitions.service.js");
-    const data = await acquisitionService.create({ ...req.body, sellRequestId: req.params.sellRequestId }, req.actor);
+    // QA-BUG-002: Dashboard "Accept for Acquisition" marks the sell request accepted.
+    const data = await acquisitionService.create({
+      ...req.body,
+      sellRequestId: req.params.sellRequestId,
+      acceptSellRequest: true
+    }, req.actor);
     res.status(201).json({ data, meta: { requestId: res.locals.requestId } });
   })
 };

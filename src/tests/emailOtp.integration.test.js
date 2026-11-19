@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import request from "supertest";
 
+process.env.EMAIL_TRANSPORT = "smtp";
 process.env.SMTP_HOST = "smtp.test";
 process.env.SMTP_PORT = "587";
 process.env.SMTP_USER = "support@builtglory.com";

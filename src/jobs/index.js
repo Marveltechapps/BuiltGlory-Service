@@ -8,6 +8,8 @@ import { Notification } from "../modules/notifications/notifications.model.js";
 import { processNotificationQueue, enqueueInAppAndPush } from "../services/notification.service.js";
 import { withJobLock } from "../services/jobLock.service.js";
 import { logger } from "../config/logger.js";
+import { service as userService } from "../modules/users/users.service.js";
+import { service as boostOrdersService } from "../modules/boostOrders/boostOrders.service.js";
 import cron from "node-cron";
 
 const enqueueDualChannelOnce = async ({ key, ...notification }) => {
@@ -111,6 +113,12 @@ export const calculateStageAging = async () => {
   });
 };
 
+export const completeDueAccountDeletions = () =>
+  withJobLock("account-deletion-complete", () => userService.completeDueAccountDeletions());
+
+export const syncBoostOrders = () =>
+  withJobLock("boost-orders-sync", () => boostOrdersService.expireDueOrders());
+
 export const runAllJobs = async () => {
   await markOverdueCallbacks();
   await markOverdueSupportTickets();
@@ -120,6 +128,8 @@ export const runAllJobs = async () => {
   await withJobLock("notification-retry", () => processNotificationQueue());
   await retryDocumentScans();
   await calculateStageAging();
+  await completeDueAccountDeletions();
+  await syncBoostOrders();
 };
 
 let scheduledTask;
@@ -128,7 +138,7 @@ let scheduledTask;
 export const scheduleJobs = () => {
   if (scheduledTask || process.env.NODE_ENV === "test") return scheduledTask;
   scheduledTask = cron.schedule("*/15 * * * *", () => {
-    runAllJobs().catch((error) => {
+    withJobLock("scheduled-jobs", () => runAllJobs()).catch((error) => {
       logger.error({ message: "Scheduled jobs failed", error: error.message, stack: error.stack });
     });
   });

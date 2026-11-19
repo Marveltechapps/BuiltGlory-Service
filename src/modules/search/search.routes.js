@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { authenticate, requireAnyPermission } from "../../middleware/auth.js";
-import { validate } from "../../middleware/validate.js";
+import { validateZod } from "../../middleware/validateZod.js";
 import { controller } from "./search.controller.js";
-import { searchValidator } from "./search.validation.js";
+import { searchSchema } from "./search.schemas.js";
 
 const router = Router();
 
@@ -15,6 +15,6 @@ router.post("/me/searches", authenticate("customer"), controller.createMeSearche
 router.delete("/me/searches", authenticate("customer"), controller.removeMeSearches);
 router.delete("/me/searches/:term", authenticate("customer"), controller.removeMeSearchesById);
 
-router.get("/admin/search", authenticate("admin"), requireAnyPermission(["properties.read", "users.read", "enquiries.read", "acquisitions.read", "sales.read", "visits.read", "support.read", "audit.read"]), validate(searchValidator), controller.search);
+router.get("/admin/search", authenticate("admin"), requireAnyPermission(["properties.read", "users.read", "enquiries.read", "acquisitions.read", "sales.read", "visits.read", "support.read", "audit.read"]), validateZod(searchSchema), controller.search);
 
 export default router;

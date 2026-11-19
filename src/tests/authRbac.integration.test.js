@@ -1,5 +1,8 @@
+import mongoose from "mongoose";
 import request from "supertest";
 import { app, bearer, seedAdmin, seedCustomer, setupIntegrationDb } from "./helpers/integrationHarness.js";
+import { Document } from "../modules/documents/documents.model.js";
+import { makeReferenceId } from "../utils/id.js";
 
 setupIntegrationDb();
 
@@ -59,5 +62,76 @@ describe("auth and RBAC integration", () => {
     expect(res.body.data.state).toBe("Tamil Nadu");
     expect(res.body.data.latitude).toBe(13.0827);
     expect(res.body.data.longitude).toBe(80.2707);
+  });
+
+  test("customer profile update ignores block and assignment fields", async () => {
+    const { token, user } = await seedCustomer({ name: "Aarav Subramanian" });
+    const { admin } = await seedAdmin();
+    const res = await request(app)
+      .patch("/api/v1/me")
+      .set("Authorization", bearer(token))
+      .send({ name: "Aarav Subramanian", isBlocked: true, assignedTo: String(admin._id), status: "verified" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.isBlocked).toBe(false);
+    expect(res.body.data.assignedTo ?? null).toBeNull();
+
+    const onlyPrivileged = await request(app)
+      .patch("/api/v1/me")
+      .set("Authorization", bearer(token))
+      .send({ isBlocked: false, assignedTo: String(admin._id) });
+    expect(onlyPrivileged.status).toBe(422);
+    expect(user.isBlocked).toBe(false);
+  });
+
+  test("customer KYC upload is attached to the profile as pending", async () => {
+    const { token, user } = await seedCustomer({ kycStatus: "not_submitted", kycDocuments: [] });
+    const pan = await Document.create({
+      referenceId: makeReferenceId("documents"),
+      ownerType: "user",
+      ownerId: user._id,
+      purpose: "kyc",
+      documentType: "pan",
+      fileName: "pan.pdf",
+      mimeType: "application/pdf",
+      storageKey: `kyc/user/${user._id}/pan.pdf`,
+      isPrivate: true,
+      status: "uploaded",
+      scanStatus: "clean"
+    });
+    const aadhaar = await Document.create({
+      referenceId: makeReferenceId("documents"),
+      ownerType: "user",
+      ownerId: user._id,
+      purpose: "kyc",
+      documentType: "aadhaar",
+      fileName: "aadhaar.pdf",
+      mimeType: "application/pdf",
+      storageKey: `kyc/user/${user._id}/aadhaar.pdf`,
+      isPrivate: true,
+      status: "uploaded",
+      scanStatus: "clean"
+    });
+
+    const res = await request(app)
+      .post("/api/v1/me/kyc")
+      .set("Authorization", bearer(token))
+      .send({
+        documents: [
+          { documentId: String(pan._id), type: "pan" },
+          { documentId: String(aadhaar._id), type: "aadhaar" }
+        ]
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.kycStatus).toBe("pending");
+    expect(res.body.data.kycDocuments.map((doc) => doc.type).sort()).toEqual(["aadhaar", "pan"]);
+
+    const foreign = new mongoose.Types.ObjectId();
+    const rejected = await request(app)
+      .post("/api/v1/me/kyc")
+      .set("Authorization", bearer(token))
+      .send({ documents: [{ documentId: String(foreign), type: "pan" }] });
+    expect(rejected.status).toBe(422);
   });
 });

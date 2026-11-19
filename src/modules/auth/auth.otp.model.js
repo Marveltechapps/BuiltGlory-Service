@@ -1,9 +1,13 @@
 import mongoose from "mongoose";
+import { EMAIL_OTP_PURPOSES } from "../../constants/enums.js";
+import { applySchemaDefaults } from "../../database/schemaCommon.js";
 
 const otpSchema = new mongoose.Schema({
   requestId: { type: String, required: true, unique: true, index: true },
   email: { type: String, required: true, lowercase: true, trim: true, index: true },
-  purpose: { type: String, enum: ["email_verification"], default: "email_verification", index: true },
+  purpose: { type: String, enum: EMAIL_OTP_PURPOSES, default: "email_verification", index: true },
+  /** Binds the verification to the requesting account so an address cannot be verified for someone else's session. */
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   otpHash: { type: String, required: true, select: false },
   salt: { type: String, required: true, select: false },
   attempts: { type: Number, default: 0, min: 0 },
@@ -22,5 +26,7 @@ const otpSchema = new mongoose.Schema({
 
 otpSchema.index({ email: 1, purpose: 1, createdAt: -1 });
 otpSchema.index({ email: 1, purpose: 1, usedAt: 1, invalidatedAt: 1, expiresAt: 1 });
+
+applySchemaDefaults(otpSchema);
 
 export const EmailOtp = mongoose.models.EmailOtp || mongoose.model("EmailOtp", otpSchema);

@@ -159,13 +159,18 @@ export const dispatchNotification = async (notification) => {
   }
   await Notification.findByIdAndUpdate(notification._id, { status: "processing" });
   const message = renderTemplate({ templateId: notification.templateId, channel: notification.channel, payload: notification.payload });
-  const response = await sendViaProvider({
-    channel: notification.channel,
-    recipient: notification.recipient,
-    message,
-    payload: notification.payload,
-    notification
-  });
+  let response;
+  try {
+    response = await sendViaProvider({
+      channel: notification.channel,
+      recipient: notification.recipient,
+      message,
+      payload: notification.payload,
+      notification
+    });
+  } catch (error) {
+    response = { ok: false, status: 503, body: error?.message || "Notification provider failed" };
+  }
   return Notification.findByIdAndUpdate(notification._id, {
     status: response.ok ? "sent" : "failed",
     providerResponse: response.body,

@@ -3,7 +3,7 @@ import { repository } from "./salesDeals.repository.js";
 import { Property } from "../properties/properties.model.js";
 import { User } from "../users/users.model.js";
 import { BuyEnquiry } from "../buyEnquiries/buyEnquiries.model.js";
-import { domainError } from "./salesDeals.error.js";
+import { domainError, conflict } from "./salesDeals.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
 import { assertTransition } from "../../services/workflow.rules.js";
 import { withTransaction } from "../../database/transactions.js";
@@ -126,6 +126,24 @@ export const service = {
       ...(extra.documentation ? { documentation: extra.documentation } : {}),
       ...(extra.closedAt ? { closedAt: extra.closedAt } : {})
     };
+    if (to === "lost") {
+      // Release the listing only when this deal is the one holding it. A paid token stays paid
+      // until an admin records a verified refund reference. That is a separate money movement.
+      return withTransaction(async (session) => {
+        const currentQuery = repository.Model.findOne({ _id: before._id, isDeleted: { $ne: true } });
+        const current = session ? await currentQuery.session(session) : await currentQuery;
+        if (current?.stage === "lost") throw conflict("This deal is already lost.");
+        const doc = await baseService.transition(id, "lost", actor, req, { ...patch, session });
+        if (before.propertyId) {
+          await Property.findOneAndUpdate(
+            { _id: before.propertyId, status: "reserved", reservedByDealId: before._id, isDeleted: { $ne: true } },
+            { $set: { status: "available" }, $unset: { reservedByDealId: 1 } },
+            { session }
+          );
+        }
+        return doc;
+      });
+    }
     if (to === "closed") {
       return withTransaction(async (session) => {
         assertTransition("salesDealStage", before.stage, "closed");

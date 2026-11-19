@@ -24,7 +24,27 @@ export const service = {
         await SalesDeal.updateOne({ _id: openDeal._id }, { $set: { "financials.agreedPrice": offerAmount, lastActivityAt: new Date() } });
       }
     }
-    return baseService.update(id, patch, actor, req);
+    const updated = await baseService.update(id, patch, actor, req);
+    try {
+      const { appendConversationMessage } = await import("../conversationMessages/conversationMessages.service.js");
+      const offerTypes = new Set(["offer", "counter_offer", "deal_agreed"]);
+      const type = data.type || "text";
+      await appendConversationMessage({
+        conversationType: "chat_thread",
+        conversationId: updated._id,
+        senderType: actor?.type === "admin" ? "admin" : "customer",
+        senderId: actor?.id,
+        type,
+        text: data.text,
+        offer: offerTypes.has(type)
+          ? { amount: Number(data.offerAmount) || 0, status: type === "offer" ? "pending" : type === "deal_agreed" ? "accepted" : "pending" }
+          : undefined,
+        clientMessageId: typeof data.clientMessageId === "string" ? data.clientMessageId.trim().slice(0, 100) : undefined
+      });
+    } catch {
+      // Dual-write must not break embedded chat delivery.
+    }
+    return updated;
   },
   async respondToOffer(id, messageId, data, actor, req) {
     const thread = await repository.findById(id);
@@ -52,6 +72,32 @@ export const service = {
     thread.lastMessageAt = new Date();
     await thread.save();
     await baseService.update(id, { lastMessageAt: thread.lastMessageAt }, actor, req);
+    try {
+      const { appendConversationMessage } = await import("../conversationMessages/conversationMessages.service.js");
+      if (data.decision === "accepted") {
+        await appendConversationMessage({
+          conversationType: "chat_thread",
+          conversationId: thread._id,
+          senderType: "admin",
+          senderId: actor?.id,
+          type: "deal_agreed",
+          text: data.notes || "Offer accepted.",
+          offer: { amount: Number(message.offerAmount) || 0, status: "accepted" }
+        });
+      } else if (data.decision === "countered") {
+        await appendConversationMessage({
+          conversationType: "chat_thread",
+          conversationId: thread._id,
+          senderType: "admin",
+          senderId: actor?.id,
+          type: "counter_offer",
+          text: data.notes,
+          offer: { amount: Number(data.counterAmount) || 0, status: "pending" }
+        });
+      }
+    } catch {
+      // Dual-write must not break embedded chat delivery.
+    }
     return thread;
   }
 };

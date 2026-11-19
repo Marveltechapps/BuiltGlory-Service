@@ -21,7 +21,10 @@ afterEach(() => {
 
 const otpFor = async (phone) => {
   const requestId = await getRedis().get(`otp:latest:91${phone}`);
-  const raw = requestId ? await getRedis().get(`otp:${requestId}`) : null;
+  if (!requestId) return null;
+  const plain = await getRedis().get(`otp:plain:${requestId}`);
+  if (plain) return plain;
+  const raw = await getRedis().get(`otp:${requestId}`);
   return raw ? JSON.parse(raw).otp : null;
 };
 

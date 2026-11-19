@@ -3,9 +3,13 @@ import { repository } from "./payments.repository.js";
 import { SalesDeal } from "../salesDeals/salesDeals.model.js";
 import { Property } from "../properties/properties.model.js";
 import { Document } from "../documents/documents.model.js";
+import { Payment } from "./payments.model.js";
+import { makeReferenceId } from "../../utils/id.js";
 import { service as adminSettingsService } from "../adminSettings/adminSettings.service.js";
-import { domainError, unauthorized } from "./payments.error.js";
+import { conflict, domainError, unauthorized } from "./payments.error.js";
 import { writeAuditLog } from "../../services/audit.service.js";
+import { withTransaction } from "../../database/transactions.js";
+import { notifyLifecycle } from "../../services/service.factory.js";
 
 const baseService = createService({ collection: "payments", repository, workflowField: "status", workflowMap: "paymentStatus", ownerField: "userId" });
 const confirmableStatuses = new Set(["created", "pending"]);
@@ -25,6 +29,45 @@ const snapshotTokenPayment = (payment, extra = {}) => ({
   verifiedAt: extra.verifiedAt || payment.verifiedAt || new Date()
 });
 
+const couponUseLimit = (uses) => {
+  const text = String(uses || "");
+  const slash = text.match(/(\d+)\s*\/\s*(\d+)/);
+  if (slash) return Number(slash[2]);
+  const only = text.match(/(\d+)/);
+  return only ? Number(only[1]) : 0;
+};
+
+/** Applies a stored coupon only when it explicitly targets token payments and its numbers parse. */
+const quoteTokenCoupon = async ({ settings, code, userId, tokenAmount }) => {
+  const normalized = String(code || "").trim().toUpperCase();
+  const coupon = (settings.tools?.coupons || []).find((item) => String(item.code || "").trim().toUpperCase() === normalized);
+  if (!coupon || coupon.active === false) throw domainError("Coupon is not active.");
+  if (!/token/i.test(String(coupon.appliesTo || ""))) throw domainError("This coupon does not apply to token payments.");
+  const expiry = Date.parse(String(coupon.expiry || ""));
+  if (!Number.isFinite(expiry)) throw domainError("Coupon expiry is not a valid date.");
+  if (expiry < Date.now()) throw domainError("Coupon has expired.");
+  const limit = couponUseLimit(coupon.uses);
+  if (!(limit > 0)) throw domainError("Coupon use limit is not set.");
+  const raw = String(coupon.discount || "").replace(/[₹,\s]/g, "").replace(/%$/, "");
+  const value = Number(raw);
+  if (!(value > 0)) throw domainError("Coupon discount is not a valid amount.");
+  let amount = 0;
+  if (coupon.type === "% discount") {
+    if (value >= 100) throw domainError("Coupon discount must leave a payable token.");
+    amount = Math.round((tokenAmount * (100 - value)) / 100);
+  } else if (coupon.type === "Flat discount") {
+    amount = tokenAmount - value;
+  } else {
+    throw domainError("Coupon type is not supported.");
+  }
+  if (!(amount > 0) || amount >= tokenAmount) throw domainError("Coupon discount must leave a payable token.");
+  const usedFilter = { couponCode: normalized, isDeleted: { $ne: true }, status: { $nin: ["cancelled", "rejected", "failed"] } };
+  const used = await Payment.countDocuments(usedFilter);
+  if (used >= limit) throw domainError("Coupon has reached its use limit.");
+  if (userId && await Payment.findOne({ ...usedFilter, userId })) throw domainError("You have already used this coupon.");
+  return { code: normalized, amount };
+};
+
 const assertProofDocument = async ({ proofDocumentId, dealId, actor }) => {
   if (!proofDocumentId) return null;
   const doc = await Document.findOne({ _id: proofDocumentId, isDeleted: { $ne: true } });
@@ -40,23 +83,46 @@ const assertProofDocument = async ({ proofDocumentId, dealId, actor }) => {
 
 const markDealTokenPaid = async ({ payment, actor, notes, session }) => {
   const verifiedAt = new Date();
+  const sessionOpt = session ? { session } : undefined;
+
+  // Atomically claim the property for this deal. Reject if already reserved/sold (QA-BUG-005).
+  if (payment.propertyId) {
+    const claimed = await Property.findOneAndUpdate(
+      { _id: payment.propertyId, status: "available", isDeleted: { $ne: true } },
+      { $set: { status: "reserved", reservedByDealId: payment.dealId } },
+      { returnDocument: "after", ...sessionOpt }
+    );
+    if (!claimed) {
+      const existing = await Property.findOne({ _id: payment.propertyId, isDeleted: { $ne: true } }, null, sessionOpt);
+      if (existing && existing.status === "reserved" && String(existing.reservedByDealId || "") === String(payment.dealId)) {
+        // Idempotent re-verify for the same deal.
+      } else {
+        throw conflict("Property is already reserved by another buyer.");
+      }
+    }
+  }
+
+  // Only count this payment once even if verify is retried (QA-BUG-006).
   const dealPatch = {
     $inc: { "financials.totalPaid": payment.amount },
     $set: {
       lastActivityAt: verifiedAt,
+      reservesProperty: true,
       "financials.tokenPaid": true,
       "financials.tokenAmount": payment.amount,
       "financials.tokenPayment": snapshotTokenPayment(payment, {
         notes,
         verifiedBy: actor?.id,
         verifiedAt
-      })
+      }),
+      "financials.tokenPaymentId": payment._id
     }
   };
-  await SalesDeal.findByIdAndUpdate(payment.dealId, dealPatch, session ? { session } : undefined);
-  if (payment.propertyId) {
-    await Property.findByIdAndUpdate(payment.propertyId, { status: "reserved" }, session ? { session } : undefined);
-  }
+  await SalesDeal.findOneAndUpdate(
+    { _id: payment.dealId, "financials.tokenPaid": { $ne: true } },
+    dealPatch,
+    sessionOpt
+  );
   return verifiedAt;
 };
 
@@ -102,11 +168,19 @@ export const service = {
       }
     }
     let amount = Number(data.amount);
+    let couponCode;
     if (type === "token") {
       const settings = await adminSettingsService.get();
       const expectedAmount = Number(settings.payment?.tokenAmount ?? 250000);
-      if (expectedAmount > 0 && amount !== expectedAmount) throw domainError("Token payment amount must match configured token amount.");
-      amount = expectedAmount;
+      if (data.couponCode) {
+        const quote = await quoteTokenCoupon({ settings, code: data.couponCode, userId: actor?.id, tokenAmount: expectedAmount });
+        if (expectedAmount > 0 && amount !== quote.amount) throw domainError("Token payment amount must match the coupon price.");
+        amount = quote.amount;
+        couponCode = quote.code;
+      } else {
+        if (expectedAmount > 0 && amount !== expectedAmount) throw domainError("Token payment amount must match configured token amount.");
+        amount = expectedAmount;
+      }
     }
     const proof = await assertProofDocument({ proofDocumentId: data.proofDocumentId, dealId: data.dealId, actor });
     const payment = await baseService.create({
@@ -123,7 +197,8 @@ export const service = {
       proofUrl: proof?.url || "",
       notes: String(data.notes || "").trim(),
       submittedAt: new Date(),
-      idempotencyKey
+      idempotencyKey,
+      ...(couponCode ? { couponCode } : {})
     }, actor);
     return repository.update(payment._id, { status: "pending" });
   },
@@ -150,20 +225,46 @@ export const service = {
     }
     if (decision !== "paid") throw domainError("Decision must be paid or rejected.");
     const verifiedAt = new Date();
-    const updated = await baseService.transition(id, "paid", actor, req, {
-      paidAt: verifiedAt,
-      verifiedBy: actor.id,
-      verifiedAt,
-      verificationNotes: verificationNotes || "Verified by admin after manual confirmation."
-    });
-    if (payment.dealId) {
-      await markDealTokenPaid({
-        payment: updated,
+    const notesText = verificationNotes || "Verified by admin after manual confirmation.";
+    // One transaction: CAS claim of pending→paid + atomic property reserve (QA-BUG-005 / QA-BUG-006).
+    // Do not use a plain transition-then-side-effect path: MongoDB transaction retries would
+    // re-run markDealTokenPaid after status is already paid and inflate totalPaid.
+    return withTransaction(async (session) => {
+      const sessionOpt = session ? { session } : undefined;
+      const updated = await repository.Model.findOneAndUpdate(
+        { _id: id, status: { $in: [...confirmableStatuses] }, isDeleted: { $ne: true } },
+        {
+          $set: {
+            status: "paid",
+            paidAt: verifiedAt,
+            verifiedBy: actor.id,
+            verifiedAt,
+            verificationNotes: notesText
+          }
+        },
+        { returnDocument: "after", runValidators: true, ...sessionOpt }
+      );
+      if (!updated) throw conflict("Payment was already verified or is not pending.");
+      await writeAuditLog({
         actor,
-        notes: verificationNotes || "Verified by admin after manual confirmation."
-      });
-    }
-    return updated;
+        action: "payments.status_changed",
+        resourceType: "payments",
+        resourceId: id,
+        before: { status: payment.status },
+        after: updated.toObject?.() || updated,
+        req
+      }, sessionOpt);
+      await notifyLifecycle({ collection: "payments", action: "transition", doc: updated, to: "paid" });
+      if (updated.dealId) {
+        await markDealTokenPaid({
+          payment: updated,
+          actor,
+          notes: notesText,
+          session
+        });
+      }
+      return updated;
+    });
   },
   async recordAdminOffline({ dealId, amount, method, reference, proofUrl, proofDocumentId, notes }, actor, req) {
     if (actor?.type !== "admin") throw unauthorized("Admin access is required to record offline payments.");
@@ -203,5 +304,64 @@ export const service = {
       req
     });
     return payment;
+  },
+  /**
+   * Records one outbound refund for a paid customer payment.
+   * The original payment becomes `refunded` only together with a refund row that carries
+   * the admin's transfer reference. A second call returns that same row.
+   */
+  async recordVerifiedRefund(id, { transactionReference, notes } = {}, actor, req) {
+    if (actor?.type !== "admin") throw unauthorized("Admin access is required to record a refund.");
+    const reference = String(transactionReference || "").trim();
+    if (reference.length < 4) throw domainError("A verified refund reference is required. The payment is not marked refunded without it.");
+    const original = await repository.findById(id);
+    if (original.type === "refund") throw domainError("Record the refund against the original payment.");
+    if (!["token", "full", "stage"].includes(original.type)) throw domainError("This payment type cannot be refunded here.");
+    try {
+      return await withTransaction(async (session) => {
+        const existing = await Payment.findOne({ refundOfPaymentId: original._id, type: "refund", isDeleted: { $ne: true } }).session(session);
+        if (existing?.status === "refunded") return existing;
+        if (original.status !== "paid") throw domainError("Only a paid payment can be refunded.");
+        await baseService.transition(original._id, "refunded", actor, req, {
+          session,
+          verificationNotes: String(notes || "").trim() || "Refund recorded against a verified transfer reference."
+        });
+        const [refund] = await Payment.create([{
+          referenceId: makeReferenceId("payments"),
+          userId: original.userId,
+          direction: "outbound",
+          dealId: original.dealId,
+          propertyId: original.propertyId,
+          refundOfPaymentId: original._id,
+          type: "refund",
+          amount: original.amount,
+          currency: original.currency || "INR",
+          status: "refunded",
+          isOpen: false,
+          method: original.method || "bank",
+          gateway: "escrow",
+          transactionReference: reference,
+          notes: String(notes || "").trim(),
+          verifiedBy: actor.id,
+          verifiedAt: new Date(),
+          paidAt: new Date(),
+          submittedAt: new Date()
+        }], { session });
+        await writeAuditLog({
+          actor,
+          action: "payments.refund_recorded",
+          resourceType: "payments",
+          resourceId: refund._id,
+          before: { status: "paid", paymentId: String(original._id) },
+          after: { status: "refunded", transactionReference: reference },
+          req
+        }, session ? { session } : undefined);
+        return refund;
+      });
+    } catch (error) {
+      const existing = await Payment.findOne({ refundOfPaymentId: original._id, type: "refund", status: "refunded", isDeleted: { $ne: true } });
+      if (existing) return existing;
+      throw error;
+    }
   }
 };

@@ -54,10 +54,29 @@ const assertUploadOwner = async (payload, actor) => {
   throw domainError("You cannot upload documents for this resource.");
 };
 
+const documentationMentionsDoc = (documentation, documentId) => {
+  if (!documentation || typeof documentation !== "object") return false;
+  const bags = [documentation.docs, documentation.documents, documentation.sharedDocuments, documentation.sharedDocs, documentation.items];
+  for (const bag of bags) {
+    if (!Array.isArray(bag)) continue;
+    for (const item of bag) {
+      const id = typeof item === "string" ? item : item?._id || item?.documentId || item?.id;
+      if (id && String(id) === String(documentId)) return true;
+    }
+  }
+  return false;
+};
+
 const assertCanRead = async (doc, actor) => {
   if (actor?.type === "customer") {
-    await assertUploadOwner({ ownerType: doc.ownerType, ownerId: doc.ownerId }, actor);
-    return;
+    try {
+      await assertUploadOwner({ ownerType: doc.ownerType, ownerId: doc.ownerId }, actor);
+      return;
+    } catch {
+      const deals = await SalesDeal.find({ buyerId: actor.id, isDeleted: { $ne: true } }).select("documentation").lean();
+      if (deals.some((deal) => documentationMentionsDoc(deal.documentation, doc._id))) return;
+      throw forbidden("You cannot read this document.");
+    }
   }
   if (!staffHas(actor, readPermissionsFor(doc))) throw forbidden("You cannot read this document.");
 };

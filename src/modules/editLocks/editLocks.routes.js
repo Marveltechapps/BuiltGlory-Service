@@ -1,15 +1,15 @@
 import { Router } from "express";
 import { controller } from "./editLocks.controller.js";
 import { authenticate } from "../../middleware/auth.js";
-import { validate } from "../../middleware/validate.js";
-import { lockParamsValidator, lockValidator } from "./editLocks.validation.js";
+import { validateZod } from "../../middleware/validateZod.js";
+import { lockParamsSchema, lockSchema } from "./editLocks.schemas.js";
 
 const router = Router();
 
-router.get("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockParamsValidator), controller.getAdminWorkflowLock);
+router.get("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validateZod(lockParamsSchema), controller.getAdminWorkflowLock);
 
-router.post("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockValidator), controller.createAdminWorkflowLock);
+router.post("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validateZod(lockSchema), controller.createAdminWorkflowLock);
 
-router.delete("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validate(lockParamsValidator), controller.removeAdminWorkflowLock);
+router.delete("/admin/workflow/:entityType/:entityId/lock", authenticate("admin"), validateZod(lockParamsSchema), controller.removeAdminWorkflowLock);
 
 export default router;

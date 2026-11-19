@@ -34,7 +34,17 @@ export const sendCustomerOtp = async ({ countryCode = "+91", phone, deviceId, ip
     if (taken) throw conflict("This phone number is already registered to another account.");
   }
   if (await redis.get(cooldownKey)) throw conflict("OTP resend cooldown is active.");
-  const payload = { phone, phoneNormalized, otp, attempts: 0, deviceId, ip, purpose, createdAt: new Date().toISOString() };
+  // OBS-04: store only a hash of the OTP in Redis (never plaintext in production paths).
+  const payload = {
+    phone,
+    phoneNormalized,
+    otpHash: hash(otp),
+    attempts: 0,
+    deviceId,
+    ip,
+    purpose,
+    createdAt: new Date().toISOString()
+  };
   try {
     await sendOtpViaSmsVendor({ mobileNumber: phone, otp });
   } catch (error) {
@@ -52,6 +62,10 @@ export const sendCustomerOtp = async ({ countryCode = "+91", phone, deviceId, ip
   await redis.set("otp:" + requestId, JSON.stringify(payload), "EX", env.OTP_EXPIRES_SECONDS);
   await redis.set(`otp:latest:${phoneNormalized}`, requestId, "EX", env.OTP_EXPIRES_SECONDS);
   await redis.set(cooldownKey, "1", "EX", env.OTP_RESEND_SECONDS);
+  // Reveal key for automated tests / SMS log mode only. Never written in production.
+  if (env.NODE_ENV === "test" || (env.NODE_ENV !== "production" && String(env.SMS_DELIVERY_MODE || "").toLowerCase() === "log")) {
+    await redis.set("otp:plain:" + requestId, otp, "EX", env.OTP_EXPIRES_SECONDS);
+  }
   // Notification enqueue must not fail OTP delivery after SMS + Redis succeeded.
   enqueueNotification({
     event: "otp_sent",
@@ -120,33 +134,31 @@ const publicSession = (session, actor) => ({
   current: actor?.sid === session.sid
 });
 
-const verifyStoredUserOtp = async ({ countryCode = "+91", phone, otp, deviceId, userAgent, ip }) => {
-  const phoneNormalized = normalizePhone(countryCode, phone);
-  const user = await User.findOne({ $or: [{ mobileNumber: phone }, { phoneNormalized }] }).select("+otp +otpExpiry");
-  if (!user || !user.otp) throw unauthorized("OTP expired or invalid.");
-  if (!user.otpExpiry || new Date() > new Date(user.otpExpiry)) throw unauthorized("OTP expired or invalid.");
-  if (String(user.otp).trim() !== String(otp).trim()) throw unauthorized("Invalid OTP.");
-
-  user.otp = null;
-  user.otpExpiry = null;
-  user.isVerified = true;
-  user.lastLoginAt = new Date();
-  await user.save();
-  return issueSession({ id: user._id, type: "customer", role: user.role, userType: user.userType }, { user }, { deviceId, userAgent, ip });
-};
-
+/**
+ * P0 (G-01): Plaintext OTP on the user document is removed.
+ * Phone OTPs live only in Redis. The legacy verifyStoredUserOtp fallback is gone.
+ */
 export const verifyCustomerOtp = async ({ requestId, countryCode = "+91", phone, otp, deviceId, userAgent, ip, purpose = "login" }) => {
   const redis = getRedis();
   const phoneNormalized = normalizePhone(countryCode, phone);
   const resolvedRequestId = isPlaceholderRequestId(requestId) ? await redis.get(`otp:latest:${phoneNormalized}`) : requestId;
   const raw = resolvedRequestId ? await redis.get("otp:" + resolvedRequestId) : null;
-  if (!raw) return verifyStoredUserOtp({ countryCode, phone, otp, deviceId, userAgent, ip });
+  if (!raw) throw unauthorized("OTP expired or invalid.");
   const rec = JSON.parse(raw);
   if (rec.phone !== phone || (rec.purpose && purpose && rec.purpose !== purpose)) throw unauthorized("OTP request mismatch.");
-  if (rec.attempts >= env.OTP_MAX_ATTEMPTS) throw conflict("OTP verification locked.");
-  if (rec.otp !== otp) { rec.attempts += 1; await redis.set("otp:" + resolvedRequestId, JSON.stringify(rec), "EX", env.OTP_EXPIRES_SECONDS); throw unauthorized("Invalid OTP."); }
-  await redis.del("otp:" + resolvedRequestId);
-  await redis.del(`otp:latest:${phoneNormalized}`);
+  // QA-BUG-008: atomic attempt counter so parallel guesses cannot bypass the lockout.
+  const attemptsKey = `otp:attempts:${resolvedRequestId}`;
+  const attempts = await redis.incr(attemptsKey);
+  if (attempts === 1) await redis.expire(attemptsKey, env.OTP_EXPIRES_SECONDS);
+  if (attempts > env.OTP_MAX_ATTEMPTS) throw conflict("OTP verification locked.");
+  const expectedHash = rec.otpHash || (rec.otp ? hash(String(rec.otp)) : null);
+  if (!expectedHash || expectedHash !== hash(String(otp))) {
+    // Best-effort mirror for diagnostics / older readers.
+    rec.attempts = attempts;
+    await redis.set("otp:" + resolvedRequestId, JSON.stringify(rec), "EX", env.OTP_EXPIRES_SECONDS).catch(() => {});
+    throw unauthorized("Invalid OTP.");
+  }
+  await redis.del("otp:" + resolvedRequestId, `otp:latest:${phoneNormalized}`, attemptsKey, "otp:plain:" + resolvedRequestId);
   if ((rec.purpose || purpose) === "change_phone" || (rec.purpose || purpose) === "password_reset") {
     if ((rec.purpose || purpose) === "change_phone") await redis.set(`phone-change-verified:${rec.phoneNormalized}`, "1", "EX", 900);
     return { verified: true, phone, phoneNormalized };

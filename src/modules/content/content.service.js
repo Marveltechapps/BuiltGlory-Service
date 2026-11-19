@@ -30,21 +30,23 @@ const withManagedFields = (data, actor, existing) => {
   };
 };
 
-const ensureDefaults = async () => {
+/** Seed defaults via migrate/seed scripts — not inside GET handlers. */
+export const seedDefaultContent = async () => {
   const count = await ContentItem.countDocuments({ isDeleted: { $ne: true } });
-  if (count > 0) return;
-  await ContentItem.insertMany(DEFAULT_CONTENT_ITEMS.map((item, index) => ({
+  if (count > 0) return { inserted: 0 };
+  const docs = DEFAULT_CONTENT_ITEMS.map((item, index) => ({
     ...item,
     referenceId: makeReferenceId("content"),
     status: item.status || "published",
     order: item.order ?? index,
     publishedAt: item.publishedAt || new Date()
-  })), { ordered: false });
+  }));
+  await ContentItem.insertMany(docs, { ordered: false });
+  return { inserted: docs.length };
 };
 
 export const service = {
   async listPublic(query = {}) {
-    await ensureDefaults();
     const filter = { status: "published", isDeleted: { $ne: true } };
     if (query.section) filter.section = query.section;
     if (query.category) filter.category = query.category;
@@ -53,14 +55,12 @@ export const service = {
   },
 
   async getPublic(slug) {
-    await ensureDefaults();
     const doc = await ContentItem.findOne({ slug: normalizeSlug(slug), status: "published", isDeleted: { $ne: true } }).select(publicFields);
     if (!doc) throw notFound("Content not found.");
     return doc;
   },
 
   async list(query = {}) {
-    await ensureDefaults();
     return repository.list(query, {});
   },
 

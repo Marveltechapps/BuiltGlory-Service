@@ -84,12 +84,14 @@ export const connectDatabase = async () => {
 
   try {
     isInitialConnection = true;
+    // Never build indexes at app startup in production — use `npm run migrate` (G-39 / §13.2).
     await mongoose.connect(env.MONGODB_URI, {
       serverSelectionTimeoutMS: 30000,
       connectTimeoutMS: 30000,
       socketTimeoutMS: 45000,
       maxPoolSize: 10,
       retryWrites: true,
+      autoIndex: env.NODE_ENV !== "production",
       tls: env.MONGODB_URI.startsWith("mongodb+srv://")
     });
   } catch (error) {

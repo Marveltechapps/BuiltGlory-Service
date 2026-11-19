@@ -224,6 +224,21 @@ export const service = {
       req
     );
 
+    try {
+      const { appendConversationMessage } = await import("../conversationMessages/conversationMessages.service.js");
+      await appendConversationMessage({
+        conversationType: "support_ticket",
+        conversationId: ticket._id,
+        senderType: responderType,
+        senderId: actor?.id,
+        type: "text",
+        text: message,
+        clientMessageId
+      });
+    } catch {
+      // Dual-write must not break the existing embedded-array path.
+    }
+
     if (options.notifyRecipient !== false) {
       if (responderType === "admin") {
         await notifyCustomerSupportMessage(ticket, message).catch(() => undefined);

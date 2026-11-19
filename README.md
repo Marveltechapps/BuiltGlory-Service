@@ -9,7 +9,8 @@ Architecture reference: [ARCHITECTURE.md](./ARCHITECTURE.md).
 - **Node.js 20+**, **Express 5**
 - **MongoDB** (Mongoose)
 - **Redis** (production)
-- **Socket.IO**, **Firebase Admin** (push), **AWS S3**, **Razorpay**
+- **Socket.IO**, **Firebase Admin** (push), **AWS S3**
+- **Payments:** manual escrow only (bank / UPI / cheque / cash). Admins verify payment proofs. Online gateways (Razorpay / Worldline / Paynimo) are **not** implemented.
 
 ## Structure
 
@@ -42,7 +43,7 @@ Copy `.env.example` to `.env`. Minimum for local dev:
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_SECRET` | Auth signing secrets |
 | `CORS_ORIGINS` | Allowed frontend origins (dashboard + Expo web) |
 
-See `.env.example` for S3, Razorpay, SMTP, and Firebase options.
+See `.env.example` for S3, SMTP, Firebase, and optional Razorpay env keys (reserved for a future gateway; unused by the current manual-payment flow).
 
 ## Scripts
 
