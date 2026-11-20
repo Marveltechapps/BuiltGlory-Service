@@ -88,7 +88,7 @@ Operational routes, mounted before `/api`:
 
 | Method and path | Body |
 | --- | --- |
-| `GET /health` | `{ "status": "ok", "uptimeSeconds": <number> }` |
+| `GET /health` and `GET /` | `{ "status": "ok", "uptimeSeconds": <number> }` |
 | `GET /ready` | `{ "status": "ready", "checks": { "api": "ok", "memory": "ok" } }` |
 | `GET /metrics` | In-process counters, histograms, uptime, and memory |
 | `GET /openapi.json` | OpenAPI document from `src/docs/openapi.js`. Hidden when `NODE_ENV=production`. |

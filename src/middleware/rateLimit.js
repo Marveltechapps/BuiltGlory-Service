@@ -67,7 +67,7 @@ export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   // Local Expo/device testing burns through a shared IP budget quickly (polling + retries).
   max: isDev ? 100000 : 1000,
-  skip: () => isDev,
+  skip: (req) => isDev || req.path === "/" || req.path === "/health",
   store: createRedisStore("rl:general:")
 });
 

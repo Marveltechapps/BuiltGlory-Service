@@ -11,7 +11,7 @@ Run `BG-Service` as a production Node process with private data stores, HTTPS, a
 - systemd unit: `deploy/systemd/builtglory-api.service`. `Restart=on-failure`, `KillSignal=SIGTERM`, `TimeoutStopSec=15`. The app's own shutdown budget is 10 seconds.
 - Production and staging do not switch ports when 5001 is taken.
 - `trust proxy` is 1, which matches one Nginx or ALB hop.
-- Health: `GET /health` → `{ "status": "ok" }`. Ready: `GET /ready` → static ready. `/metrics` answers on loopback only.
+- Health: `GET /health` and `GET /` → HTTP 200 `{ "status": "ok" }`. These do not call MongoDB or Redis. `GET /ready` returns 503 when MongoDB or Redis is down. `/metrics` answers on loopback only.
 - Socket.IO attaches to the same HTTP server. Clients use namespace `/chat` and transports websocket and polling.
 - Jobs start when `NODE_ENV` is not `test`. Run one API replica, or accept duplicate cron until the backend splits workers. Do not scale past one task until that is decided.
 - Nginx example proxies `/api/` and `/socket.io/` and redirects port 80 to HTTPS.
@@ -19,7 +19,7 @@ Run `BG-Service` as a production Node process with private data stores, HTTPS, a
 ## Identified issues
 
 - No supervisor was in the repo before the systemd unit. Nothing has installed that unit on a server.
-- `/ready` will not fail when MongoDB is down. Use `/health` only to prove the process is up. Dependency failure still needs log alarms.
+- `GET /health` stays 200 while dependencies are down. Point the load balancer at `/health` for liveness and alarm on `GET /ready` for MongoDB and Redis. A public name that does not resolve is not an application 500.
 - Phone numbers are logged on OTP send. Filter them before CloudWatch (backend change, not done).
 - Staging runtime allows non-TLS Redis even though the staging template does not.
 
@@ -84,7 +84,9 @@ SMS_DELIVERY_MODE=vendor
 
 ## Expected output
 
-Local validators print `PASS`. Future health check returns HTTP 200. This session did not deploy, so there is no AWS health result.
+Local validators print `PASS`. A deployed process returns HTTP 200 from `GET /health`.
+
+Checked on 19 Nov 2026 from this workspace: `Resolve-DnsName api.builtglory.com` and `staging-api.builtglory.com` returned no records. `https://api.builtglory.com/health` failed with "The remote name could not be resolved". That is not an HTTP 200. Production deployment is **not PASS**. No instance was launched in this change.
 
 ## Security considerations
 
@@ -96,7 +98,7 @@ Network, secrets, Redis, and MongoDB documents. Node 20 on the host if not using
 
 ## Completion status
 
-Process definition, image definition, and env gate: in repo. No instance, service, or release exists.
+Process definition, image definition, and env gate: in repo. No instance, service, DNS record, or release exists. Do not treat these files as a completed AWS deployment.
 
 ## Pending manual approvals
 

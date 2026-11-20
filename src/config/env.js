@@ -1,7 +1,12 @@
 import dotenv from "dotenv";
 import { z } from "zod";
 
-dotenv.config();
+// Production and staging receive variables from the host (systemd EnvironmentFile,
+// container env, or the platform). Do not fill gaps from a local .env file.
+const nodeEnvAtLoad = process.env.NODE_ENV;
+if (nodeEnvAtLoad !== "production" && nodeEnvAtLoad !== "staging") {
+  dotenv.config();
+}
 
 const emptyToUndefined = (v) => (v === "" || v === undefined || v === null ? undefined : v);
 
@@ -89,10 +94,12 @@ const schema = z
   .passthrough()
   .superRefine((data, ctx) => {
     const isProdLike = data.NODE_ENV === "production" || data.NODE_ENV === "staging";
-    if (data.NODE_ENV === "production" && !data.MONGODB_URI) {
-      ctx.addIssue({ code: "custom", path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
+    if (isProdLike && !data.MONGODB_URI) {
+      ctx.addIssue({ code: "custom", path: ["MONGODB_URI"], message: "MONGODB_URI is required in production/staging" });
+    } else if (isProdLike && /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(String(data.MONGODB_URI))) {
+      ctx.addIssue({ code: "custom", path: ["MONGODB_URI"], message: "MONGODB_URI must not use localhost in production/staging" });
     }
-    if (!data.MONGODB_URI && data.NODE_ENV !== "production") {
+    if (!data.MONGODB_URI && !isProdLike) {
       data.MONGODB_URI = "mongodb://127.0.0.1:27017/builtglory";
     }
     if (isProdLike) {

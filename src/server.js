@@ -38,8 +38,11 @@ function closeHttpServer(httpServer) {
   });
 }
 
-async function shutdown(signal, { exitProcess = true } = {}) {
-  if (isShuttingDown) return;
+async function shutdown(signal, { exitProcess = true, exitCode = 0 } = {}) {
+  if (isShuttingDown) {
+    if (exitCode !== 0) process.exit(exitCode);
+    return;
+  }
   isShuttingDown = true;
 
   logger.info({ message: "Graceful shutdown started", signal, port: activePort });
@@ -58,7 +61,7 @@ async function shutdown(signal, { exitProcess = true } = {}) {
     await closeRedis();
     clearTimeout(forceExit);
     logger.info({ message: "Graceful shutdown complete", signal });
-    if (exitProcess) process.exit(0);
+    if (exitProcess) process.exit(exitCode);
   } catch (error) {
     clearTimeout(forceExit);
     logger.error({
@@ -66,7 +69,7 @@ async function shutdown(signal, { exitProcess = true } = {}) {
       error: error.message,
       stack: error.stack
     });
-    if (exitProcess) process.exit(1);
+    if (exitProcess) process.exit(exitCode === 0 ? 1 : exitCode);
     throw error;
   }
 }
@@ -92,6 +95,18 @@ function registerSignalHandlers() {
   } catch {
     // Signal unsupported on this platform.
   }
+
+  // Exit non-zero so systemd Restart=on-failure replaces the process after a crash.
+  process.on("unhandledRejection", (reason) => {
+    const error = reason instanceof Error ? reason : new Error(String(reason));
+    logger.error({ message: "Unhandled rejection", error: error.message, stack: error.stack });
+    void shutdown("unhandledRejection", { exitCode: 1 });
+  });
+
+  process.on("uncaughtException", (error) => {
+    logger.error({ message: "Uncaught exception", error: error.message, stack: error.stack });
+    void shutdown("uncaughtException", { exitCode: 1 });
+  });
 }
 
 async function bootstrap() {

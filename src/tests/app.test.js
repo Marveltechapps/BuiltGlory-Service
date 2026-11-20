@@ -6,6 +6,12 @@ describe("BuiltGlory API", () => {
     const res = await request(app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("ok");
+    expect(typeof res.body.uptimeSeconds).toBe("number");
+  });
+  test("serves liveness at the API root", async () => {
+    const res = await request(app).get("/");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(expect.objectContaining({ status: "ok" }));
   });
   test("serves OpenAPI", async () => {
     const res = await request(app).get("/openapi.json");

@@ -2,20 +2,29 @@
 Description=BuiltGlory API
 After=network-online.target
 Wants=network-online.target
+# Stop retrying a process that cannot boot (bad env, Mongo, or Redis).
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=simple
 User=builtglory
 Group=builtglory
 WorkingDirectory=/opt/builtglory/api
+# Defaults apply only when api.env does not set the same name.
+# Node 20 must be /usr/bin/node (distribution package). nvm paths are not visible here.
+Environment=NODE_ENV=production
+Environment=PORT=5001
 EnvironmentFile=/etc/builtglory/api.env
 ExecStart=/usr/bin/node src/server.js
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15
 KillSignal=SIGTERM
+KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
+SyslogIdentifier=builtglory-api
 
 [Install]
 WantedBy=multi-user.target

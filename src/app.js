@@ -17,10 +17,18 @@ import routes from "./routes/index.js";
 import signinRoutes from "./modules/signin/signin.routes.js";
 import { openapi } from "./docs/openapi.js";
 import { metricsSnapshot } from "./services/metrics.service.js";
+const sendLiveness = (req, res) => {
+  res.status(200).json({ status: "ok", uptimeSeconds: process.uptime() });
+};
+
 export const createApp = () => {
   const app = express();
   // One hop (Nginx / load balancer). Without this, every client shares the proxy IP bucket.
   app.set("trust proxy", 1);
+  // Liveness is registered before rate limiting and body parsers. A Redis or Mongo
+  // outage must not turn the process probe into HTTP 500. Dependency health is GET /ready.
+  app.get("/health", sendLiveness);
+  app.get("/", sendLiveness);
   app.use(requestContext);
   app.use(requestLogger);
   app.use(helmet());
@@ -31,7 +39,6 @@ export const createApp = () => {
   app.use(express.urlencoded({ extended: true }));
   app.use(mongoSanitize);
   app.use(generalLimiter);
-  app.get("/health", (req, res) => res.json({ status: "ok", uptimeSeconds: process.uptime() }));
   // QA-BUG-009: readiness must fail when MongoDB or Redis is unreachable.
   app.get("/ready", async (req, res) => {
     const checks = { api: "ok", memory: "ok", mongodb: "unknown", redis: "unknown" };
