@@ -1,5 +1,6 @@
-import { AppError, badRequest, conflict } from "./error.model.js";
+import { AppError, badRequest, conflict, serviceUnavailable } from "./error.model.js";
 import { logger } from "../../config/logger.js";
+import { isRedisDependencyError } from "../../config/redis.js";
 import { CLIENT_ERROR_CODES } from "./error.types.js";
 
 const DUPLICATE_FIELD_MESSAGES = {
@@ -51,9 +52,15 @@ const resolveStatusCode = (mapped) => {
   return 500;
 };
 
+const mapRedisDependencyError = (err) => (
+  isRedisDependencyError(err)
+    ? serviceUnavailable("Redis is unavailable. This request needs Redis and was not completed without it.")
+    : null
+);
+
 export const notFoundHandler = (req, res, next) => next(new AppError(404, "NOT_FOUND", "Route not found."));
 export const errorHandler = (err, req, res, next) => {
-  const mapped = mapDuplicateKeyError(err) || mapCastOrValidationError(err) || err;
+  const mapped = mapDuplicateKeyError(err) || mapCastOrValidationError(err) || mapRedisDependencyError(err) || err;
   const statusCode = resolveStatusCode(mapped);
   const code = mapped.code || CLIENT_ERROR_CODES[statusCode] || "INTERNAL_SERVER_ERROR";
   const hideMessage = statusCode >= 500 && !mapped.isOperational;

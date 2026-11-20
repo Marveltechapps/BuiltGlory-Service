@@ -3,6 +3,7 @@ import { validatePropertyPublication } from "../../services/workflow.rules.js";
 import { repository } from "./properties.repository.js";
 import { resolvePropertyType } from "./properties.propertyType.utils.js";
 import { domainError, forbidden } from "./properties.error.js";
+import { resolveAddressCoordinates } from "../geo/geo.coordinates.js";
 
 const baseService = createService({
   collection: "properties",
@@ -12,10 +13,13 @@ const baseService = createService({
   ownerField: null
 });
 
-const withResolvedType = (data = {}) => {
+const withResolvedType = async (data = {}) => {
   const payload = { ...data };
   if (payload.type || payload.specs) {
     payload.type = resolvePropertyType({ type: payload.type, specs: payload.specs });
+  }
+  if (payload.address && typeof payload.address === "object") {
+    payload.address = await resolveAddressCoordinates(payload.address, { refine: true });
   }
   return payload;
 };
@@ -26,7 +30,7 @@ const canPublish = (actor) =>
 export const service = {
   ...baseService,
   async create(data, actor) {
-    const payload = withResolvedType(data);
+    const payload = await withResolvedType(data);
     if (payload.status === "available") {
       if (!canPublish(actor)) throw forbidden("Publishing a property requires properties.publish.");
       validatePropertyPublication(payload);
@@ -37,7 +41,7 @@ export const service = {
     return baseService.create(payload, actor);
   },
   async update(id, data, actor, req) {
-    return baseService.update(id, withResolvedType(data), actor, req);
+    return baseService.update(id, await withResolvedType(data), actor, req);
   },
   async transition(id, to, actor, req, extra = {}) {
     if (to === "sold") {

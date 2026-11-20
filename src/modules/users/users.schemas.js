@@ -119,7 +119,16 @@ export const updateSchema = z.object({
       }).strict().refine((o) => Object.keys(o || {}).length >= 1, { message: "Object must have at least 1 key(s)" }).optional()
     }).strict().refine((o) => Object.keys(o || {}).length >= 1, { message: "Object must have at least 1 key(s)" }).optional(),
     "preferences": z.object({
-      "language": z.enum(["en", "ta", "hi", "kn", "English", "Tamil", "Hindi", "Kannada"])
+      "language": z.enum(["en", "ta", "hi", "kn", "English", "Tamil", "Hindi", "Kannada"]).transform((value) => ({
+        en: "en",
+        English: "en",
+        ta: "ta",
+        Tamil: "ta",
+        hi: "hi",
+        Hindi: "hi",
+        kn: "kn",
+        Kannada: "kn"
+      }[value]))
     }).strict().optional(),
     "privacy": z.object({
       "personalise": z.coerce.boolean().optional(),

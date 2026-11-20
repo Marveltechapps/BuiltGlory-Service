@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Redis from "ioredis";
-import { buildRedisOptions, isRedisTlsUrl } from "../src/config/redisOptions.js";
+import { buildRedisOptions, isRedisTlsUrl, resolveRedisConnection } from "../src/config/redisOptions.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 dotenv.config({ path: path.join(root, ".env") });
@@ -14,7 +14,12 @@ dotenv.config({ path: path.join(root, ".env") });
 const API = process.env.VERIFY_API_URL || `http://127.0.0.1:${process.env.PORT || 5001}`;
 const email = process.env.SEED_ADMIN_EMAIL || "admin@builtglory.com";
 const password = process.env.SEED_ADMIN_PASSWORD || "ChangeMe123!";
-const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+const resolvedRedis = resolveRedisConnection(process.env);
+const redisUrl = resolvedRedis.url;
+if (!redisUrl) {
+  console.error("FAIL Redis is not configured. Set REDIS_URL or REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD.");
+  process.exit(1);
+}
 
 const json = async (res) => {
   const text = await res.text();

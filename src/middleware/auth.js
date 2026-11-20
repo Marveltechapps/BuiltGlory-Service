@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { env } from "../config/env.js";
-import { getRedis } from "../config/redis.js";
-import { unauthorized, forbidden } from "../modules/error/index.js";
+import { getRedis, isRedisDependencyError } from "../config/redis.js";
+import { unauthorized, forbidden, serviceUnavailable } from "../modules/error/index.js";
 import { Admin } from "../modules/admins/admins.model.js";
 import { User } from "../modules/users/users.model.js";
 const tokenHash = (token) => crypto.createHash("sha256").update(token).digest("hex");
@@ -38,7 +38,12 @@ export const authenticate = (expectedType) => async (req, res, next) => {
       req.actor = { type: "customer", id: user._id, role: user.role, userType: user.userType, sid: decoded.sid };
     }
     next();
-  } catch (error) { next(error.isOperational ? error : unauthorized("Invalid or expired token.")); }
+  } catch (error) {
+    if (isRedisDependencyError(error)) {
+      return next(serviceUnavailable("Redis is unavailable, so this session cannot be verified. The request was not accepted without that check."));
+    }
+    next(error.isOperational ? error : unauthorized("Invalid or expired token."));
+  }
 };
 const hasAdminPermission = (actor, permission) =>
   actor?.role === "super_admin" ||

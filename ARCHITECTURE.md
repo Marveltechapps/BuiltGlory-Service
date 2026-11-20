@@ -23,7 +23,7 @@ Package `builtglory-backend`, version 1.0.0. Node.js 20+, Express 5, ES modules,
 | Runtime | Node.js `>=20`, `"type": "module"` |
 | HTTP | Express 5 |
 | Database | MongoDB through Mongoose 9 |
-| Cache and locks | Redis through ioredis. An in-memory map is used when `REDIS_URL` is empty. Production requires Redis |
+| Cache and locks | Redis through ioredis. Host and port come from `REDIS_URL` or `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`. An in-memory map is used only when Redis is unset or `REDIS_ENABLED=false`. Production requires Redis |
 | Validation | Joi 18, applied by `src/middleware/validate.js` |
 | Auth | jsonwebtoken access and refresh tokens, bcryptjs for admin passwords |
 | Security headers | Helmet 8 |
@@ -148,7 +148,12 @@ Controllers reach the error middleware through `asyncHandler`, which forwards re
 | `JWT_REFRESH_EXPIRES_IN` | duration string | `30d` |
 | `ADMIN_INACTIVITY_SECONDS` | number; admin access-token lifetime | `1800` |
 | `OTP_EXPIRES_SECONDS` / `OTP_RESEND_SECONDS` / `OTP_MAX_ATTEMPTS` | numbers | `300` / `60` / `5` |
-| `REDIS_URL` | required in production | empty (memory fallback) |
+| `REDIS_ENABLED` | `false` only in development/test | unset (enabled when a target is configured) |
+| `REDIS_URL` | required in production unless `REDIS_HOST` is set; production must be `rediss://` | empty |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | used when `REDIS_URL` is empty | host empty, port `6379`, password empty |
+| `REDIS_CONNECT_TIMEOUT_MS` | connection timeout | `10000` |
+| `REDIS_MAX_RECONNECT_ATTEMPTS` | fast exponential retries, then a slow probe | `8` |
+| `REDIS_RECONNECT_PROBE_MS` | delay between probes after the fast retries stop | `15000` |
 | `CORS_ORIGINS` | required in production | empty |
 | `AWS_REGION` / `AWS_S3_BUCKET` / keys | S3 | region `ap-south-1` |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | webhook secret required in production | empty |
@@ -345,7 +350,7 @@ Jobs in `src/jobs/index.js`:
 
 - Customer and admin are separate token types. A customer token cannot call an admin route.
 - CORS is browser origin control. Mobile clients send a bearer token.
-- Redis is required in production for token blacklist, OTP, and job locks. Local development uses a process-local `Map` when `REDIS_URL` is unset.
+- Redis is required in production for token blacklist, OTP, rate limits, and job locks. Local development uses a process-local `Map` only when Redis is unset or `REDIS_ENABLED=false`. A configured Redis that is down does not switch those checks to memory: the process stays up, logs the target, and the critical calls fail until Redis reconnects.
 - Metrics and the rate limiter are in-process. They do not span multiple API instances.
 - Jobs do not run inside the API process. Schedule `npm run jobs:run` outside the server.
 - The payment webhook is the only route that reads a raw JSON body. It is registered before `express.json`.

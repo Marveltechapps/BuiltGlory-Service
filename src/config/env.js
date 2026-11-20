@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import { z } from "zod";
+import { assertProductionRedisUrl, resolveRedisConnection } from "./redisOptions.js";
 
 // Production and staging receive variables from the host (systemd EnvironmentFile,
 // container env, or the platform). Do not fill gaps from a local .env file.
@@ -17,6 +18,18 @@ const boolFromEnv = z.preprocess((v) => {
 }, z.boolean());
 
 const emailLoose = z.string().email();
+
+const optionalBool = z.preprocess((value) => {
+  if (value === "" || value === undefined || value === null) return undefined;
+  if (value === true || value === "true" || value === "1") return true;
+  if (value === false || value === "false" || value === "0") return false;
+  return value;
+}, z.boolean().optional());
+
+const intFromEnv = (fallback, min, max) => z.preprocess(
+  (value) => (value === "" || value === undefined || value === null ? undefined : value),
+  z.coerce.number().int().min(min).max(max).default(fallback)
+);
 
 const schema = z
   .object({
@@ -36,7 +49,14 @@ const schema = z
     OTP_RESEND_SECONDS: z.coerce.number().default(60),
     OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
     WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().default(300),
+    REDIS_ENABLED: optionalBool,
     REDIS_URL: z.string().default(""),
+    REDIS_HOST: z.string().default(""),
+    REDIS_PORT: intFromEnv(6379, 1, 65535),
+    REDIS_PASSWORD: z.string().default(""),
+    REDIS_CONNECT_TIMEOUT_MS: intFromEnv(10_000, 200, 60_000),
+    REDIS_MAX_RECONNECT_ATTEMPTS: intFromEnv(8, 1, 50),
+    REDIS_RECONNECT_PROBE_MS: intFromEnv(15_000, 250, 120_000),
     /** When false, rediss:// accepts self-signed / private CA (rarely needed). Default true. */
     REDIS_TLS_REJECT_UNAUTHORIZED: boolFromEnv.default(true),
     CORS_ORIGINS: z.string().default(""),
@@ -115,20 +135,20 @@ const schema = z
       if (!process.env.JWT_AUDIENCE || !String(data.JWT_AUDIENCE).trim()) {
         ctx.addIssue({ code: "custom", path: ["JWT_AUDIENCE"], message: "JWT_AUDIENCE is required in production/staging" });
       }
-      if (!data.REDIS_URL || !String(data.REDIS_URL).trim()) {
-        ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL is required in production/staging (in-memory sessions are not allowed)" });
+      const resolvedRedis = resolveRedisConnection(data);
+      if (resolvedRedis.error) {
+        ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: resolvedRedis.error });
+      } else if (resolvedRedis.mode !== "redis") {
+        ctx.addIssue({
+          code: "custom",
+          path: ["REDIS_URL"],
+          message: "Redis is required in production/staging. Set REDIS_URL or REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD. REDIS_ENABLED=false is not allowed."
+        });
       } else {
-        const redisUrl = String(data.REDIS_URL).trim();
-        if (!/^redis(s)?:\/\//i.test(redisUrl)) {
-          ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL must use redis:// or rediss://" });
-        }
-        if (data.NODE_ENV === "production") {
-          if (!/^rediss:\/\//i.test(redisUrl)) {
-            ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL must use rediss:// (TLS) in production" });
-          }
-          if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(redisUrl)) {
-            ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: "REDIS_URL must not use localhost in production" });
-          }
+        try {
+          assertProductionRedisUrl(resolvedRedis.url, data.NODE_ENV);
+        } catch (error) {
+          ctx.addIssue({ code: "custom", path: ["REDIS_URL"], message: error.message });
         }
       }
       if (!data.CORS_ORIGINS || !String(data.CORS_ORIGINS).trim()) {
@@ -179,6 +199,19 @@ if (!parsed.success) {
 const value = parsed.data;
 if (!value.MONGODB_URI) {
   value.MONGODB_URI = "mongodb://127.0.0.1:27017/builtglory";
+}
+
+const resolvedRedis = resolveRedisConnection(value);
+if (resolvedRedis.error) {
+  throw new Error(`Invalid environment: REDIS_URL: ${resolvedRedis.error}`);
+}
+value.REDIS_MODE = resolvedRedis.mode;
+value.REDIS_TARGET = resolvedRedis.target || "";
+value.REDIS_SOURCE = resolvedRedis.source || "";
+if (resolvedRedis.mode === "redis") {
+  value.REDIS_URL = resolvedRedis.url;
+} else {
+  value.REDIS_URL = "";
 }
 
 const DEV_ACCESS_SECRET = "dev-access-secret-change-before-production";

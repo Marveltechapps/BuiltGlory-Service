@@ -199,6 +199,12 @@ export const service = {
         ...Object.keys(mongoUpdate.$unset || {}).map((key) => `unset:${key}`)
       ]
     });
+    const latitude = Number(setFields.latitude);
+    const longitude = Number(setFields.longitude);
+    if (Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180) {
+      setFields.location = { type: "Point", coordinates: [longitude, latitude] };
+      mongoUpdate.$set = setFields;
+    }
     if (!Object.keys(mongoUpdate).length) {
       throw domainError("No profile fields were provided to update.");
     }

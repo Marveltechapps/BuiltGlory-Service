@@ -1,5 +1,7 @@
 # Local development only. Do not use this file for staging or production.
 # It publishes MongoDB and Redis on localhost and stores no AWS data.
+# Host Redis port: REDIS_PORT (default 6379). The container keeps listening on 6379.
+# Example (PowerShell): $env:REDIS_PORT='6380'; docker compose -f deploy/docker-compose.local.yml up -d redis
 services:
   mongo:
     image: mongo:7
@@ -7,4 +9,17 @@ services:
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    ports: ["${REDIS_PORT:-6379}:6379"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - redis-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+volumes:
+  redis-data:

@@ -7,7 +7,7 @@ import mongoose from "mongoose";
 import swaggerUi from "swagger-ui-express";
 import { env } from "./config/env.js";
 import { corsOriginOption } from "./config/cors.js";
-import { getRedis } from "./config/redis.js";
+import { getRedis, getRedisStatus } from "./config/redis.js";
 import { requestContext } from "./middleware/requestContext.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { mongoSanitize } from "./middleware/mongoSanitize.js";
@@ -51,20 +51,23 @@ export const createApp = () => {
       ready = false;
     }
     try {
-      const redis = getRedis();
-      if (typeof redis.ping === "function") {
-        const pong = await redis.ping();
-        checks.redis = pong === "PONG" || pong === "pong" ? "ok" : "unavailable";
-      } else if (env.REDIS_URL) {
+      const redisStatus = getRedisStatus();
+      checks.redisMode = redisStatus.mode;
+      if (redisStatus.mode === "memory") {
+        checks.redis = "ok";
+      } else if (redisStatus.state !== "ready") {
         checks.redis = "unavailable";
+        checks.redisTarget = redisStatus.target;
+        checks.redisError = redisStatus.lastError || `Redis is ${redisStatus.state}.`;
         ready = false;
       } else {
-        // In-memory stub used for local/test when REDIS_URL is unset.
-        checks.redis = "ok";
+        const pong = await getRedis().ping();
+        checks.redis = pong === "PONG" || pong === "pong" ? "ok" : "unavailable";
+        if (checks.redis !== "ok") ready = false;
       }
-      if (checks.redis !== "ok") ready = false;
-    } catch {
+    } catch (error) {
       checks.redis = "error";
+      checks.redisError = error?.message || "Redis ping failed.";
       ready = false;
     }
     if (!ready) return res.status(503).json({ status: "not_ready", checks });

@@ -6,6 +6,7 @@ import { badRequest, forbidden, notFound } from "./properties.error.js";
 import { PropertyImportJob } from "./properties.importJob.model.js";
 import { Property } from "./properties.model.js";
 import { bulkTemplateFields, FEATURED_LIMIT, importJobQuery, importJobPopulate, parseBulkRows, validateBulkRows, mapBulkRowToProperty, propertyToTemplateRow, mapPropertyQuery } from "./properties.bulkImport.js";
+import { hasCoordinates, resolveAddressCoordinates } from "../geo/geo.coordinates.js";
 
 // Reserved and sold units are not offered as available catalogue results.
 const PUBLIC_STATUSES = ["available", "under_construction"];
@@ -20,6 +21,23 @@ const toPublicProperty = (doc) => {
   delete plain.sourceSheet;
   delete plain.acquisitionId;
   delete plain.deletedBy;
+  return plain;
+};
+
+/** One listing: look the address up and store the point so every client map can pin it. */
+const withMapPoint = async (doc) => {
+  const plain = toPublicProperty(doc);
+  if (!plain?.address) return plain;
+  const resolved = await resolveAddressCoordinates(plain.address, { refine: true });
+  if (!hasCoordinates(resolved)) return plain;
+  const unchanged = Number(plain.address.latitude) === resolved.latitude && Number(plain.address.longitude) === resolved.longitude && plain.address.location?.coordinates?.[0] === resolved.longitude;
+  plain.address = { ...plain.address, latitude: resolved.latitude, longitude: resolved.longitude, location: resolved.location };
+  if (plain._id && !unchanged) {
+    Property.updateOne(
+      { _id: plain._id },
+      { $set: { "address.latitude": resolved.latitude, "address.longitude": resolved.longitude, "address.location": resolved.location } }
+    ).catch(() => {});
+  }
   return plain;
 };
 
@@ -44,7 +62,7 @@ export const controller = {
     if (!data) throw notFound("Property not found.");
     const { incrementPropertyDailyStat } = await import("./properties.dailyStats.service.js");
     await incrementPropertyDailyStat(data._id, "views");
-    res.json({ data, meta: { requestId: res.locals.requestId } });
+    res.json({ data: await withMapPoint(data), meta: { requestId: res.locals.requestId } });
   }),
   createPropertiesSave: asyncHandler(async (req, res) => {
     const { Property } = await import("./properties.model.js");

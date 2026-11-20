@@ -50,7 +50,10 @@ else if (looksLocal(e.MONGODB_URI) && (e.NODE_ENV === "production" || e.NODE_ENV
 } else ok.push("MONGODB_URI=set(scheme-ok)");
 
 const hostedEnv = e.NODE_ENV === "production" || e.NODE_ENV === "staging";
-if (!present("REDIS_URL")) issues.push("REDIS_URL missing (in-memory sessions forbidden in production/staging)");
+if (/^(0|false)$/i.test(String(e.REDIS_ENABLED || ""))) {
+  issues.push("REDIS_ENABLED=false is not allowed in production/staging");
+}
+if (!present("REDIS_URL")) issues.push("REDIS_URL missing (set a rediss:// URL; REDIS_HOST alone is not a TLS URL, and in-memory sessions are forbidden)");
 else if (!/^redis(s)?:\/\//i.test(e.REDIS_URL)) issues.push("REDIS_URL scheme invalid");
 else if (hostedEnv && !/^rediss:\/\//i.test(e.REDIS_URL)) {
   issues.push("REDIS_URL must use rediss:// (TLS) in production and staging");

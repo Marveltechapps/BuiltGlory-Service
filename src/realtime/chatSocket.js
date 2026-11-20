@@ -4,7 +4,8 @@ import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { env } from "../config/env.js";
 import { corsOriginOption } from "../config/cors.js";
-import { getRedis } from "../config/redis.js";
+import { logger } from "../config/logger.js";
+import { getRedis, getRedisStatus, isRedisConfigured, isRedisDependencyError, onRedisReady, trackRedisClient } from "../config/redis.js";
 import { Admin } from "../modules/admins/admins.model.js";
 import { User } from "../modules/users/users.model.js";
 import { service as supportTicketService } from "../modules/supportTickets/supportTickets.service.js";
@@ -12,6 +13,7 @@ import { service as sellRequestService } from "../modules/sellRequests/sellReque
 
 let io;
 let socketSubscriber;
+let adapterAttached = false;
 
 /** @type {Map<string, Map<string, { type: string, id: string }>>} */
 const roomViewers = new Map();
@@ -30,7 +32,14 @@ function parseToken(socket) {
 
 async function actorFromToken(token) {
   if (!token) throw new Error("Missing access token.");
-  if (await getRedis().get("access:blacklist:" + tokenHash(token))) throw new Error("Access token has been revoked.");
+  try {
+    if (await getRedis().get("access:blacklist:" + tokenHash(token))) throw new Error("Access token has been revoked.");
+  } catch (error) {
+    if (isRedisDependencyError(error)) {
+      throw new Error("Redis is unavailable, so this socket cannot be authenticated.");
+    }
+    throw error;
+  }
   const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { issuer: env.JWT_ISSUER, audience: env.JWT_AUDIENCE });
   if (decoded.type === "admin") {
     const admin = await Admin.findById(decoded.sub);
@@ -119,10 +128,13 @@ export function publishSellerActivity(sellRequestId, activity) {
 }
 
 function attachRedisAdapter(server) {
+  if (adapterAttached || !server || !isRedisConfigured()) return;
   const redis = getRedis();
-  if (!env.REDIS_URL || typeof redis.duplicate !== "function") return;
-  socketSubscriber = redis.duplicate();
+  if (typeof redis.duplicate !== "function" || redis.status !== "ready") return;
+  socketSubscriber = trackRedisClient(redis.duplicate());
   server.adapter(createAdapter(redis, socketSubscriber));
+  adapterAttached = true;
+  logger.info({ message: "Socket.IO Redis adapter attached", target: getRedisStatus().target });
 }
 
 export function initChatSocket(httpServer) {
@@ -136,7 +148,17 @@ export function initChatSocket(httpServer) {
     pingTimeout: 30000,
     pingInterval: 25000
   });
-  attachRedisAdapter(io);
+  if (isRedisConfigured()) {
+    onRedisReady(() => {
+      try {
+        attachRedisAdapter(io);
+      } catch (error) {
+        logger.error({ message: "Socket.IO Redis adapter not attached", error: error.message });
+      }
+    });
+  } else {
+    logger.warn({ message: "Socket.IO Redis adapter skipped because Redis is disabled. Realtime events stay on this process." });
+  }
 
   const chat = io.of("/chat");
   chat.use(async (socket, next) => {
@@ -269,6 +291,7 @@ export function closeChatSocket() {
     const subscriber = socketSubscriber;
     io = undefined;
     socketSubscriber = undefined;
+    adapterAttached = false;
     roomViewers.clear();
     active.close(() => {
       if (subscriber && typeof subscriber.quit === "function") {

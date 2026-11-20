@@ -212,6 +212,25 @@ export const configureSchema = (schema) => {
     return Boolean(this.name && this.phoneNormalized && this.role && this.userType);
   });
 
+  // Older clients stored display names. Map them to the stored codes before enum validation
+  // so a later save (OTP login) does not reject the whole user document.
+  const LANGUAGE_ALIASES = {
+    en: "en",
+    english: "en",
+    ta: "ta",
+    tamil: "ta",
+    hi: "hi",
+    hindi: "hi",
+    kn: "kn",
+    kannada: "kn"
+  };
+  schema.pre("validate", function normalizeLanguage() {
+    const raw = this.get("preferences.language");
+    if (raw == null || raw === "") return;
+    const mapped = LANGUAGE_ALIASES[String(raw).trim().toLowerCase()];
+    if (mapped) this.set("preferences.language", mapped);
+  });
+
   // Keep stats.* and the deprecated top-level totals in sync (either side may be the one that was written).
   schema.pre("validate", function syncStats() {
     for (const key of STAT_KEYS) {

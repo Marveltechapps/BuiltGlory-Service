@@ -25,6 +25,8 @@
     "env:validate:staging:example": "node scripts/validate-production-env.mjs --file .env.staging.example",
     "check:integrations": "node scripts/check-integrations.mjs",
     "check:redis-sessions": "node scripts/verify-redis-sessions.mjs",
+    "check:redis-lifecycle": "node scripts/check-redis-lifecycle.mjs",
+    "check:redis-startup": "node scripts/check-redis-startup.mjs",
     "check:ses": "node scripts/ses-status.mjs",
     "email:test:controlled": "node scripts/send-controlled-test-email.mjs"
   },

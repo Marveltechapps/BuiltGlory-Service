@@ -17,6 +17,7 @@ import { makeReferenceId } from "../../utils/id.js";
 import { collectSubmissionIssues } from "./sellRequests.rules.js";
 import { visitDateTime } from "../../utils/visitTime.js";
 import { Document } from "../documents/documents.model.js";
+import { resolveAddressCoordinates } from "../geo/geo.coordinates.js";
 const baseService = createService({ collection: "sellRequests", repository, workflowField: "status", workflowMap: "sellRequestStatus", ownerField: "sellerId" });
 const clean = { isDeleted: { $ne: true } };
 const fallbackRates = {
@@ -302,8 +303,10 @@ export const service = {
       await seller.save();
     }
     if (!isDraft) validateSubmission(data, seller);
+    const address = data.address ? await resolveAddressCoordinates(data.address, { refine: true }) : data.address;
     const doc = await baseService.create(withCompleteness(null, {
       ...data,
+      ...(address ? { address } : {}),
       sellerId: seller._id,
       sellerSnapshot: { name: seller.name, phone: seller.phone, email: seller.email, userType: seller.userType, kycStatus: seller.kycStatus },
       status: isDraft ? "draft" : "new",

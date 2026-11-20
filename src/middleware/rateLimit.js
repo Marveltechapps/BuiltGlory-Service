@@ -16,8 +16,9 @@ function rateLimitJsonHandler(req, res, next, options) {
 }
 
 /**
- * OBS-05: distributed rate-limit store backed by Redis when REDIS_URL is configured.
- * Falls back to the default in-memory store for local/test without Redis.
+ * Distributed rate-limit store. Used whenever Redis is configured.
+ * Store errors propagate (passOnStoreError is false) so a Redis outage cannot skip the limit.
+ * The in-memory store is used only when Redis is explicitly disabled or unset.
  */
 const createRedisStore = (prefix) => {
   if (!env.REDIS_URL) return undefined;
@@ -59,6 +60,7 @@ const createRedisStore = (prefix) => {
 const baseOptions = {
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: false,
   handler: rateLimitJsonHandler
 };
 

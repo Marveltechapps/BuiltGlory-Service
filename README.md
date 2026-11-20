@@ -25,9 +25,12 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the folder layout, request flow and
 ```bash
 npm install
 cp .env.example .env
-# Start MongoDB (and Redis in production), then:
+# Start MongoDB, and start Redis for this machine (Docker Desktop on Windows):
+docker compose -f deploy/docker-compose.local.yml up -d redis
 npm run dev
 ```
+
+Set `REDIS_URL` or `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD` in `.env`. Those values are per laptop. The API does not hardcode a Redis address. If local Redis is down, development keeps running, logs the refused address, and retries with exponential backoff. Sessions, OTP, rate limits, and job locks return errors until Redis is back. They are not silently skipped. `REDIS_ENABLED=false` is the single-process memory store.
 
 API runs at `http://localhost:5001` by default. Swagger UI is available in development and hidden when `NODE_ENV=production`.
 
@@ -40,6 +43,7 @@ Copy `.env.example` to `.env`. Minimum for local dev:
 | Variable | Description |
 |----------|-------------|
 | `MONGODB_URI` | MongoDB connection string |
+| `REDIS_ENABLED` / `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis for this machine. `REDIS_URL` wins. Password stays in `.env` only |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `JWT_SECRET` | Auth signing secrets |
 | `CORS_ORIGINS` | Allowed frontend origins (dashboard + Expo web) |
 

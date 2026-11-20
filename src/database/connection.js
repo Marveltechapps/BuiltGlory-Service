@@ -97,7 +97,19 @@ export const connectDatabase = async () => {
   } catch (error) {
     logMongoConnectionError(error);
     suppressConnectionErrorsUntil = Date.now() + 2000;
-    throw error;
+    const code = error?.code || error?.cause?.code || error?.name || "UNKNOWN";
+    const text = `${error?.message || ""} ${error?.cause?.message || ""}`;
+    let hint = "Check MONGODB_URI and that this machine can reach the database.";
+    if (/ECONNREFUSED/i.test(text)) {
+      hint = "Nothing is accepting MongoDB connections at that address. Start MongoDB or correct MONGODB_URI.";
+    } else if (/ENOTFOUND|querySrv|EAI_AGAIN|ETIMEOUT/i.test(text)) {
+      hint = "DNS lookup failed. Check the hostname, this machine's network, and MONGODB_DNS_SERVERS.";
+    } else if (/authentication failed|bad auth|AtlasError/i.test(text)) {
+      hint = "Authentication failed. Check the username and password in MONGODB_URI.";
+    }
+    const wrapped = new Error(`MongoDB connection failed (${code}): ${error.message}. ${hint} Target: ${redactMongoUri(env.MONGODB_URI)}`);
+    wrapped.cause = error;
+    throw wrapped;
   } finally {
     isInitialConnection = false;
   }

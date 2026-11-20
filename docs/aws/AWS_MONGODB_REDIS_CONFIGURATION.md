@@ -9,7 +9,8 @@ Separate staging and production data stores and keep both off the public interne
 - The API reads `MONGODB_URI`. It does not embed a host. Transactions are required in production (`assertTransactionsAvailableInProduction`), so the deployment needs a replica set. The production template uses `mongodb+srv`, which matches Atlas or another SRV replica set. This is not Amazon DocumentDB unless a lead migrates it. Do not migrate.
 - `MONGODB_DNS_SERVERS` is optional and used when SRV DNS from the host is unreliable.
 - Redis is required for refresh sessions. Client: `ioredis` via `src/config/redis.js` and `src/config/redisOptions.js`.
-- Production runtime rejects `redis://`, localhost, and missing `REDIS_URL`.
+- Local development reads `REDIS_ENABLED`, `REDIS_URL`, `REDIS_HOST`, `REDIS_PORT`, and `REDIS_PASSWORD`. `REDIS_URL` wins. No host is hardcoded in the client.
+- Production runtime rejects `redis://`, localhost, a missing target, and `REDIS_ENABLED=false`. Set `REDIS_URL=rediss://...` for production. `REDIS_HOST` is for local or non-TLS addresses and still has to pass the production TLS check.
 - Staging runtime still accepts `redis://` on a non-local host (`redisOptions.test.js`). The staging example and `validate-production-env.mjs` require `rediss://` anyway.
 - Local compose file `deploy/docker-compose.local.yml` publishes MongoDB and Redis on localhost only. It is not a staging or production topology.
 - No ElastiCache replication group, subnet group, or Atlas project id is in the repo.

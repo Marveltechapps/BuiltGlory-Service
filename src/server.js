@@ -4,7 +4,7 @@ import { connectDatabase, disconnectDatabase } from "./database/connection.js";
 import { assertTransactionsAvailableInProduction } from "./database/transactions.js";
 import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
-import { closeRedis } from "./config/redis.js";
+import { closeRedis, connectRedis, isRedisDependencyError } from "./config/redis.js";
 import { closeChatSocket, initChatSocket } from "./realtime/chatSocket.js";
 import { listenWithPortFallback } from "./utils/findAvailablePort.js";
 import { scheduleJobs, stopScheduledJobs } from "./jobs/index.js";
@@ -99,6 +99,13 @@ function registerSignalHandlers() {
   // Exit non-zero so systemd Restart=on-failure replaces the process after a crash.
   process.on("unhandledRejection", (reason) => {
     const error = reason instanceof Error ? reason : new Error(String(reason));
+    if (isRedisDependencyError(error)) {
+      logger.error({
+        message: "Redis command failed without a waiting handler. The API process will keep running and critical Redis work stays failed closed.",
+        error: error.message
+      });
+      return;
+    }
     logger.error({ message: "Unhandled rejection", error: error.message, stack: error.stack });
     void shutdown("unhandledRejection", { exitCode: 1 });
   });
@@ -113,6 +120,7 @@ async function bootstrap() {
   registerSignalHandlers();
 
   await connectDatabase();
+  await connectRedis();
   await assertTransactionsAvailableInProduction();
   const app = createApp();
   server = http.createServer(app);
@@ -140,7 +148,12 @@ async function bootstrap() {
     mode: env.SMS_DELIVERY_MODE,
     vendorConfigured: Boolean(String(env.SMS_VENDOR_URL || env.SMS_PROVIDER_URL || "").trim())
   });
-  if (env.NODE_ENV !== "test") scheduleJobs();
+  if (env.NODE_ENV !== "test") {
+    scheduleJobs();
+    import("./modules/geo/geo.coordinates.js")
+      .then((mod) => mod.backfillMissingPropertyCoordinates())
+      .catch((error) => logger.error({ message: "Property map backfill failed", error: error.message }));
+  }
   if (env.SMS_DELIVERY_MODE === "vendor") {
     logger.warn({
       message:
